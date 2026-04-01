@@ -1,13 +1,14 @@
 #pragma once
 #include <vector>
 #include "../Layers/Layer.h"
-#include "../core/Tensor.h"
+#include "Optimizer.h"
+#include "Loss.h"
 
 class Model {
-private:
+public:
     std::vector<Layer*> layers;
 
-public:
     void add(Layer* layer);
     Tensor forward(const Tensor& input);
+    void backward(const Tensor& grad_output);
 };

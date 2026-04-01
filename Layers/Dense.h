@@ -2,11 +2,16 @@
 #include "Layer.h"
 
 class Dense : public Layer {
-private:
-    Tensor weights;
-    Tensor bias;
-
 public:
-    Dense(int input_size, int output_size);
+    int input_size;
+    int output_size;
+
+    Tensor weights;
+    Tensor biases;
+
+    Dense(int in_size, int out_size);
+
     Tensor forward(const Tensor& input) override;
+    Tensor backward(const Tensor& grad_output) override;
+    void update_weights(float learning_rate) override;
 };

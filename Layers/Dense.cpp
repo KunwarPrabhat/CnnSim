@@ -1,25 +1,61 @@
 #include "Dense.h"
 
-Dense::Dense(int input_size, int output_size)
-    : weights(input_size, output_size),
-      bias(1, output_size)
-{
+Dense::Dense(int in_size, int out_size) : input_size(in_size), output_size(out_size) {
+    weights = Tensor(in_size, out_size);
+    biases = Tensor(1, out_size);
+
     weights.randomize();
-    bias.randomize();
+    biases.fill(0.1f);
 }
 
 Tensor Dense::forward(const Tensor& input) {
-    Tensor output(input.rows, weights.cols);
+    cached_input = input;
 
-    for (int i = 0; i < input.rows; i++) {
-        for (int j = 0; j < weights.cols; j++) {
-            output(i, j) = bias(0, j);
+    int N = input.shape[0];
+    Tensor output(N, output_size);
+    output.fill(0.0f);
 
-            for (int k = 0; k < input.cols; k++) {
-                output(i, j) += input(i, k) * weights(k, j);
+    for (int n = 0; n < N; ++n) {
+        for (int j = 0; j < output_size; ++j) {
+            float sum = biases(0, j);
+            for (int k = 0; k < input_size; ++k) {
+                sum += input(n, k) * weights(k, j);
             }
+            output(n, j) = sum;
         }
     }
 
     return output;
+}
+
+Tensor Dense::backward(const Tensor& grad_output) {
+    int N = grad_output.shape[0];
+    Tensor d_input(N, input_size);
+    d_input.fill(0.0f);
+
+    for (int n = 0; n < N; ++n) {
+        for (int j = 0; j < output_size; ++j) {
+            float g = grad_output(n, j);
+
+            biases.grad[j] += g; // accumulate over batch
+
+            for (int k = 0; k < input_size; ++k) {
+                weights.grad[weights.get_index(k, j)] += cached_input(n, k) * g;
+                d_input(n, k) += weights(k, j) * g;
+            }
+        }
+    }
+
+    return d_input;
+}
+
+void Dense::update_weights(float learning_rate) {
+    for (int i = 0; i < weights.size(); ++i) {
+        weights.data[i] -= learning_rate * weights.grad[i];
+    }
+    for (int i = 0; i < biases.size(); ++i) {
+        biases.data[i] -= learning_rate * biases.grad[i];
+    }
+    weights.zero_grad();
+    biases.zero_grad();
 }
