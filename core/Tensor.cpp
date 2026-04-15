@@ -1,6 +1,5 @@
 #include "Tensor.h"
 #include <cstdlib>
-#include <numeric>
 
 Tensor::Tensor() : shape({}) {}
 
@@ -15,23 +14,30 @@ Tensor::Tensor(int n, int c, int h, int w) : shape({n, c, h, w}) {
 }
 
 Tensor::Tensor(std::vector<int> target_shape) : shape(target_shape) {
-    int total_size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
+    int total_size = 1;
+    for (int dim : shape) {
+        total_size *= dim;
+    }
     data.resize(total_size, 0.0f);
     grad.resize(total_size, 0.0f);
 }
 
 void Tensor::randomize() {
-    for (auto &x : data) {
-        x = (((float)rand() / RAND_MAX) * 2.0f - 1.0f) * 0.01f; // Scaled to [-0.01, 0.01]
+    for (int i = 0; i < data.size(); ++i) {
+        data[i] = (((float)rand() / RAND_MAX) * 2.0f - 1.0f) * 0.01f;
     }
 }
 
 void Tensor::zero_grad() {
-    std::fill(grad.begin(), grad.end(), 0.0f);
+    for (int i = 0; i < grad.size(); ++i) {
+        grad[i] = 0.0f;
+    }
 }
 
 void Tensor::fill(float value) {
-    std::fill(data.begin(), data.end(), value);
+    for (int i = 0; i < data.size(); ++i) {
+        data[i] = value;
+    }
 }
 
 int Tensor::size() const {
@@ -61,18 +67,18 @@ int Tensor::get_index(int n, int c, int h, int w) const {
     return n * (C * H * W) + c * (H * W) + h * W + w;
 }
 
-// 2D accessors
 float& Tensor::operator()(int i, int j) {
     return data[get_index(i, j)];
 }
+
 float Tensor::operator()(int i, int j) const {
     return data[get_index(i, j)];
 }
 
-// 4D accessors
 float& Tensor::operator()(int n, int c, int h, int w) {
     return data[get_index(n, c, h, w)];
 }
+
 float Tensor::operator()(int n, int c, int h, int w) const {
     return data[get_index(n, c, h, w)];
 }

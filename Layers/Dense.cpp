@@ -11,17 +11,17 @@ Dense::Dense(int in_size, int out_size) : input_size(in_size), output_size(out_s
 Tensor Dense::forward(const Tensor& input) {
     cached_input = input;
 
-    int N = input.shape[0];
-    Tensor output(N, output_size);
+    int batches = input.shape[0];
+    Tensor output(batches, output_size);
     output.fill(0.0f);
 
-    for (int n = 0; n < N; ++n) {
+    for (int b = 0; b < batches; ++b) {
         for (int j = 0; j < output_size; ++j) {
             float sum = biases(0, j);
             for (int k = 0; k < input_size; ++k) {
-                sum += input(n, k) * weights(k, j);
+                sum += input(b, k) * weights(k, j);
             }
-            output(n, j) = sum;
+            output(b, j) = sum;
         }
     }
 
@@ -29,19 +29,19 @@ Tensor Dense::forward(const Tensor& input) {
 }
 
 Tensor Dense::backward(const Tensor& grad_output) {
-    int N = grad_output.shape[0];
-    Tensor d_input(N, input_size);
+    int batches = grad_output.shape[0];
+    Tensor d_input(batches, input_size);
     d_input.fill(0.0f);
 
-    for (int n = 0; n < N; ++n) {
+    for (int b = 0; b < batches; ++b) {
         for (int j = 0; j < output_size; ++j) {
-            float g = grad_output(n, j);
+            float g = grad_output(b, j);
 
-            biases.grad[j] += g; // accumulate over batch
+            biases.grad[j] += g; 
 
             for (int k = 0; k < input_size; ++k) {
-                weights.grad[weights.get_index(k, j)] += cached_input(n, k) * g;
-                d_input(n, k) += weights(k, j) * g;
+                weights.grad[weights.get_index(k, j)] += cached_input(b, k) * g;
+                d_input(b, k) += weights(k, j) * g;
             }
         }
     }
