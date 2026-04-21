@@ -14,28 +14,30 @@
 #include "nn/Optimizer.h"
 #include "nn/Adam.h"
 #include "core/Tensor.h"
+#include "data/Dataset.h"
+#include "data/DataLoader.h"
 
 int main() {
-    std::cout << "--- MetalNet CNN Training (Phase 1) ---" << std::endl;
+    std::cout << "--- MetalNet CNN Training (Phase 2 Utilities) ---" << std::endl;
 
     Model model;
     
     // First Block: Conv -> BatchNorm2D -> LeakyReLU -> Pool
-    model.add(new Conv2D(1, 4, 3, 1, 1)); 
-    model.add(new BatchNorm2D(4));
+    model.add(new Conv2D(3, 8, 3, 1, 1)); // Support 3 channel RGB input
+    model.add(new BatchNorm2D(8));
     model.add(new LeakyReLU(0.01f));
     model.add(new MaxPool2D(2, 2));       
     
     // Second Block: Conv -> BatchNorm2D -> LeakyReLU -> Pool
-    model.add(new Conv2D(4, 8, 3, 1, 1)); 
-    model.add(new BatchNorm2D(8));
+    model.add(new Conv2D(8, 16, 3, 1, 1)); 
+    model.add(new BatchNorm2D(16));
     model.add(new LeakyReLU(0.01f));
     model.add(new MaxPool2D(2, 2));       
     
     model.add(new Flatten());
     
     // Final Layers: Dense -> Dropout -> LeakyReLU -> Dense
-    model.add(new Dense(392, 64)); 
+    model.add(new Dense(784, 64));  
     model.add(new Dropout(0.5f));
     model.add(new LeakyReLU(0.01f));
     model.add(new Dense(64, 10)); 
@@ -43,45 +45,75 @@ int main() {
     CrossEntropyLoss criterion;
     Adam optimizer(0.001f);
     
-    // Input: 2 images of 28x28 (grayscale)
-    Tensor batch_x(2, 1, 28, 28);
-    batch_x.randomize(); 
-    
-    // Targets: One-hot encoded labels for 2 images
-    Tensor batch_y(2, 10);
-    batch_y.fill(0.0f);
-    batch_y(0, 3) = 1.0f; 
-    batch_y(1, 7) = 1.0f; 
-    
-    std::cout << "Starting Training loop..." << std::endl;
-    model.train(); // Setup training mode (Dropout/BatchNorm behavior)
-
-    for(int epoch = 1; epoch <= 10; epoch++) {
-        Tensor preds = model.forward(batch_x);
-        float loss = criterion.forward(preds, batch_y);
-        
-        Tensor grad_out = criterion.backward(preds, batch_y);
-        model.backward(grad_out);
-        optimizer.step(model.layers);
-        
-        std::cout << "Epoch " << epoch << " | Loss: " << std::fixed << std::setprecision(5) << loss << std::endl;
+    // Create a dummy Dataset of 16 RGB images (16, 3, 28, 28)
+    Dataset ds;
+    ds.images = Tensor(16, 3, 28, 28);
+    ds.images.randomize();
+    ds.labels = Tensor(16, 10);
+    ds.labels.fill(0.0f);
+    for(int i=0; i<16; ++i) {
+        ds.labels(i, i % 10) = 1.0f; // Mock continuous labels
     }
     
-    model.eval(); // Switch to inference mode
-    std::cout << "Training complete. Switching to inference... " << std::endl;
+    DataLoader loader(&ds, 4, true); // batch size 4, shuffle = true
 
-    // Test standalone softmax
-    Softmax sm;
-    sm.eval();
-    Tensor test_logits(1, 10);
-    test_logits.fill(0.1f);
-    test_logits(0, 0) = 2.0f; // High response on first class
-    Tensor probs = sm.forward(test_logits);
+    std::cout << "Starting Training loop with DataLoader..." << std::endl;
+    model.train(); 
 
-    std::cout << "Standalone Softmax prob for class 0 (should be highest): " 
-              << probs(0, 0) << std::endl;
+    for(int epoch = 1; epoch <= 3; epoch++) {
+        loader.reset();
+        int batch_idx = 0;
+        
+        while (loader.has_next()) {
+            auto [batch_x, batch_y] = loader.next_batch();
+            
+            Tensor preds = model.forward(batch_x);
+            float loss = criterion.forward(preds, batch_y);
+            
+            Tensor grad_out = criterion.backward(preds, batch_y);
+            model.backward(grad_out);
+            optimizer.step(model.layers);
+            
+            std::cout << "Epoch " << epoch << ", Batch " << ++batch_idx << " | Loss: " << loss << std::endl;
+        }
+    }
+    
+    model.eval(); 
+    std::cout << "Saving Model to test_model.bin..." << std::endl;
+    model.save("test_model.bin");
+
+    // Test Serialization by loading into a new identical model structure
+    Model model2;
+    model2.add(new Conv2D(3, 8, 3, 1, 1)); // Wait, input channels is 3 for RGB!
+    model2.add(new BatchNorm2D(8));
+    model2.add(new LeakyReLU(0.01f));
+    model2.add(new MaxPool2D(2, 2));       
+    model2.add(new Conv2D(8, 16, 3, 1, 1)); 
+    model2.add(new BatchNorm2D(16));
+    model2.add(new LeakyReLU(0.01f));
+    model2.add(new MaxPool2D(2, 2));       
+    model2.add(new Flatten());
+    model2.add(new Dense(784, 64)); 
+    model2.add(new Dropout(0.5f));
+    model2.add(new LeakyReLU(0.01f));
+    model2.add(new Dense(64, 10)); 
+
+    std::cout << "Loading Model from test_model.bin..." << std::endl;
+    model2.load("test_model.bin");
+    model2.eval();
+
+    // Verify
+    Tensor test_x(1, 3, 28, 28);
+    test_x.randomize();
+    Tensor out1 = model.forward(test_x);
+    Tensor out2 = model2.forward(test_x);
+    
+    float diff = 0.0f;
+    for(int i=0; i<10; ++i) diff += std::abs(out1.data[i] - out2.data[i]);
+    
+    std::cout << "Difference between Model 1 and Loaded Model 2: " << diff << std::endl;
+    if (diff < 1e-5f) std::cout << "Serialization Success!" << std::endl;
 
     std::cout << "Done! Everything looks good." << std::endl;
-
     return 0;
 }

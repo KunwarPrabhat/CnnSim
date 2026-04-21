@@ -13,6 +13,7 @@ file(GLOB_RECURSE SOURCES
     "core/*.cpp"
     "Layers/*.cpp"
     "nn/*.cpp"
+    "data/*.cpp"
 )
 
 # Create the executable

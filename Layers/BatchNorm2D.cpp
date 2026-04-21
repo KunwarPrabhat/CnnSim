@@ -18,6 +18,10 @@ std::vector<Tensor*> BatchNorm2D::get_parameters() {
     return {&gamma, &beta};
 }
 
+std::vector<Tensor*> BatchNorm2D::get_states() {
+    return {&gamma, &beta, &running_mean, &running_var};
+}
+
 Tensor BatchNorm2D::forward(const Tensor& input) {
     int batches = input.shape[0];
     int channels = input.shape[1];

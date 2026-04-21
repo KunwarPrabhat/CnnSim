@@ -23,4 +23,5 @@ public:
     Tensor backward(const Tensor& grad_output) override;
     
     std::vector<Tensor*> get_parameters() override;
+    std::vector<Tensor*> get_states() override;
 };

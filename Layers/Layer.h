@@ -23,4 +23,8 @@ public:
     virtual std::vector<Tensor*> get_parameters() {
         return {}; // Return empty by default
     }
+
+    virtual std::vector<Tensor*> get_states() {
+        return get_parameters(); // Most layers just need their parameters saved
+    }
 };

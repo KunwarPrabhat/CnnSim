@@ -1,4 +1,6 @@
 #include "Model.h"
+#include <fstream>
+#include <stdexcept>
 
 void Model::add(Layer* layer) {
     layers.push_back(layer);
@@ -29,5 +31,29 @@ void Model::train() {
 void Model::eval() {
     for (auto layer : layers) {
         layer->eval();
+    }
+}
+
+void Model::save(const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Failed to open file for saving: " + filename);
+    }
+    for (auto layer : layers) {
+        for (Tensor* state : layer->get_states()) {
+            file.write(reinterpret_cast<const char*>(state->data.data()), state->data.size() * sizeof(float));
+        }
+    }
+}
+
+void Model::load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Failed to open file for loading: " + filename);
+    }
+    for (auto layer : layers) {
+        for (Tensor* state : layer->get_states()) {
+            file.read(reinterpret_cast<char*>(state->data.data()), state->data.size() * sizeof(float));
+        }
     }
 }
