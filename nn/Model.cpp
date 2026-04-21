@@ -19,3 +19,15 @@ void Model::backward(const Tensor& grad_output) {
         d_out = layers[i]->backward(d_out);
     }
 }
+
+void Model::train() {
+    for (auto layer : layers) {
+        layer->train();
+    }
+}
+
+void Model::eval() {
+    for (auto layer : layers) {
+        layer->eval();
+    }
+}

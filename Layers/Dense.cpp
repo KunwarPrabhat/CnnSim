@@ -59,3 +59,7 @@ void Dense::update_weights(float learning_rate) {
     weights.zero_grad();
     biases.zero_grad();
 }
+
+std::vector<Tensor*> Dense::get_parameters() {
+    return {&weights, &biases};
+}

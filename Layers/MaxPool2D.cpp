@@ -1,6 +1,6 @@
 #include "MaxPool2D.h"
 #include <limits>
-#include <iostream>
+//#include <iostream>
 
 MaxPool2D::MaxPool2D(int p_size, int s) : pool_size(p_size), stride(s) {}
 

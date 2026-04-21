@@ -1,5 +1,5 @@
 #include "Conv2D.h"
-#include <iostream>
+//#include <iostream>
 
 Conv2D::Conv2D(int in_c, int out_c, int k_size, int s, int p)
     : in_channels(in_c), out_channels(out_c), kernel_size(k_size), stride(s), padding(p) {
@@ -99,4 +99,8 @@ void Conv2D::update_weights(float learning_rate) {
     }
     weights.zero_grad();
     biases.zero_grad();
+}
+
+std::vector<Tensor*> Conv2D::get_parameters() {
+    return {&weights, &biases};
 }

@@ -17,4 +17,5 @@ public:
     Tensor forward(const Tensor& input) override;
     Tensor backward(const Tensor& grad_output) override;
     void update_weights(float learning_rate) override;
+    std::vector<Tensor*> get_parameters() override;
 };

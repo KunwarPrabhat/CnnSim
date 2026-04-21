@@ -11,4 +11,7 @@ public:
     void add(Layer* layer);
     Tensor forward(const Tensor& input);
     void backward(const Tensor& grad_output);
+
+    void train();
+    void eval();
 };
