@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+﻿cmake_minimum_required(VERSION 3.10)
 project(MetalNet)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -10,25 +10,14 @@ else()
     add_compile_options(-mavx2 -mfma)
 endif()
 
-# Add include directories
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/include/MetalNet)
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
-# Find all source files
-file(GLOB_RECURSE SOURCES 
-    "main.cpp"
-    "core/*.cpp"
-    "Layers/*.cpp"
-    "nn/*.cpp"
-    "data/*.cpp"
-)
+add_executable(MetalNet main.cpp)
+add_executable(MetalNetTests tests.cpp)
 
-# Find OpenMP
 find_package(OpenMP)
-
-# Create the executable
-add_executable(MetalNet ${SOURCES})
-
-# Link OpenMP if found
 if(OpenMP_CXX_FOUND)
     target_link_libraries(MetalNet PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(MetalNetTests PRIVATE OpenMP::OpenMP_CXX)
 endif()

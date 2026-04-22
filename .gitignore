@@ -1,24 +1,24 @@
-# Build artifacts
+# === Build Artifacts ===
 build/
 bin/
 obj/
+out/
 
-# Executables
+# === Executables & Binaries ===
 *.exe
-MetalNet
 *.out
+*.app
+# Specific to your project's target name
+MetalNet
+MetalNetTests
 
-# Ignore all text files
-*.txt
+# === Serialized Data & Models (Phase 5) ===
+# This prevents you from accidentally uploading massive trained weights
+*.bin
+*.model
+test_model.bin
 
-# Exception for README
-!README.md
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# CMake artifacts
+# === CMake Metadata ===
 CMakeCache.txt
 CMakeFiles/
 CMakeSettings.json
@@ -26,3 +26,21 @@ cmake_install.cmake
 Makefile
 install_manifest.txt
 compile_commands.json
+# Important: Ensure CMakeLists.txt is NOT ignored
+!CMakeLists.txt
+
+# === Language Server & Tooling ===
+.clangd/
+.cache/
+.vscode/
+.idea/
+*.log
+
+# === OS Specific ===
+.DS_Store
+Thumbs.db
+
+# === General Rules ===
+# Instead of ignoring ALL .txt, ignore only local notes 
+# or specific temp files so you don't lose CMakeLists.txt
+# *.txt  <-- REMOVED to keep CMakeLists.txt safe

@@ -1,17 +1,5 @@
+#include "include/MetalNet/MetalNet.h"
 #include <iostream>
-#include "nn/Model.h"
-#include "Layers/Dense.h"
-#include "Layers/Conv2D.h"
-#include "Layers/MaxPool2D.h"
-#include "Layers/Flatten.h"
-#include "Layers/Dropout.h"
-#include "Layers/BatchNorm2D.h"
-#include "Layers/LeakyReLU.h"
-#include "nn/Loss.h"
-#include "nn/Adam.h"
-#include "core/Tensor.h"
-#include "data/Dataset.h"
-#include "data/DataLoader.h"
 
 int main() {
     std::cout << "--- MetalNet CNN Training (Phase 2 Utilities) ---" << std::endl;
@@ -61,7 +49,9 @@ int main() {
         int batch_idx = 0;
         
         while (loader.has_next()) {
-            auto [batch_x, batch_y] = loader.next_batch();
+            auto batch = loader.next_batch();
+            Tensor& batch_x = batch.first;
+            Tensor& batch_y = batch.second;
             
             Tensor preds = model.forward(batch_x);
             float loss = criterion.forward(preds, batch_y);
