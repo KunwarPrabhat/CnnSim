@@ -43,7 +43,7 @@ int main() {
     DataLoader loader(&ds, 4, true); // batch size 4, shuffle = true
     
     std::cout << "Compiling model..." << std::endl;
-    model.compile({3, 28, 28}); // Mandatory for Zero-Allocation loop
+    model.compile({4, 3, 28, 28}); // Mandatory for Zero-Allocation loop
 
     std::cout << "Starting Training loop..." << std::endl;
     model.train(); 
@@ -88,7 +88,7 @@ int main() {
            << leaky_relu(0.01f)
            << dense(64, 10);
     
-    model2.compile({3, 28, 28});
+    model2.compile({1, 3, 28, 28});
 
     std::cout << "Loading Model from test_model.bin..." << std::endl;
     model2.load("test_model.bin");
