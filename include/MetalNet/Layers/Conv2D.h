@@ -20,6 +20,13 @@ public:
     }
 
     inline void compile(const std::vector<std::vector<int>>& input_shapes) override {
+        if (input_shapes.empty()) throw std::runtime_error("Conv2D: input_shapes is empty");
+        if (input_shapes[0].size() != 4) throw std::runtime_error("Conv2D: input must have 4 dims (N,C,H,W)");
+        if (input_shapes[0][1] != in_channels) {
+            throw std::runtime_error("Conv2D: channel mismatch. Expected " + std::to_string(in_channels) + 
+                                     ", got " + std::to_string(input_shapes[0][1]));
+        }
+
         const int N  = input_shapes[0][0], H = input_shapes[0][2], W = input_shapes[0][3];
         const int OH = (H + 2*padding - kernel_size) / stride + 1;
         const int OW = (W + 2*padding - kernel_size) / stride + 1;
@@ -32,7 +39,7 @@ public:
         dcol_buffer = Tensor(rows, cols);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N = input.shape[0];
         const int M = out_channels;
@@ -84,6 +91,7 @@ public:
                 }
             }
         }
+        return output_buffer;
     }
 
     inline void backward(const Tensor& grad_output) override {
@@ -183,6 +191,7 @@ public:
     }
 
     inline std::vector<Tensor*> get_parameters() override { return {&weights, &biases}; }
+    inline std::string name() const override { return "Conv2D"; }
 };
 
 } // namespace MetalNet

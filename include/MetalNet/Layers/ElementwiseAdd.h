@@ -15,7 +15,7 @@ public:
         }
     }
 
-    inline void forward(const std::vector<const Tensor*>& inputs) override {
+    inline Tensor& forward(const std::vector<const Tensor*>& inputs) override {
         float* d = output_buffer.data.data();
         const float* s0=inputs[0]->data.data();
         #pragma omp simd
@@ -26,6 +26,7 @@ public:
             #pragma omp simd
             for (int j=0;j<output_buffer.size();++j) d[j]+=s[j];
         }
+        return output_buffer;
     }
 
     inline void backward_multi(const Tensor& go) override {
@@ -36,6 +37,7 @@ public:
             for (int j=0; j<go.size(); ++j) d[j] = g[j];
         }
     }
+    inline std::string name() const override { return "ElementwiseAdd"; }
 };
 
 } // namespace MetalNet

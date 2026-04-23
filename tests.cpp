@@ -51,7 +51,8 @@ void test_dag(){
     Tensor t1(1,2,2,2); t1.fill(1.0f);
     Tensor t2(1,3,2,2); t2.fill(2.0f);
     Concat cat;
-    Tensor merged=cat.forward({t1,t2});
+    cat.compile({{1,2,2,2}, {1,3,2,2}});
+    Tensor merged=cat.forward({&t1,&t2});
     report("Concat: output channel count == sum of input channels", merged.shape[1]==5);
     report("Concat: channel data placed at correct offsets",
            std::abs(merged(0,0,0,0)-1.0f)<1e-5f && std::abs(merged(0,2,0,0)-2.0f)<1e-5f);
@@ -60,7 +61,8 @@ void test_dag(){
     Tensor ea(1,2,2,2); ea.fill(3.0f);
     Tensor eb(1,2,2,2); eb.fill(5.0f);
     ElementwiseAdd ew;
-    Tensor esum=ew.forward({ea,eb});
+    ew.compile({{1,2,2,2}, {1,2,2,2}});
+    Tensor esum=ew.forward({&ea,&eb});
     report("ElementwiseAdd: each element equals sum of inputs",
            std::abs(esum.data[0]-8.0f)<1e-5f);
 }

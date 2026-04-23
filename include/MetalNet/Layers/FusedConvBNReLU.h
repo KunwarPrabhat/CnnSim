@@ -72,7 +72,7 @@ public:
         zero_grad();
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N = input.shape[0];
         const int M = out_channels;
@@ -140,7 +140,7 @@ public:
                     if (out_n[i] < 0.0f) out_n[i] = 0.0f;
                 }
             }
-            return;
+            return output_buffer;
         }
 
         // Training Process
@@ -238,6 +238,7 @@ public:
                 }
             }
         }
+        return output_buffer;
     }
 
     inline void backward(const Tensor& grad_output) override {
@@ -377,6 +378,7 @@ public:
             }
         }
     }
+    inline std::string name() const override { return "FusedConvBNReLU"; }
 };
 
 } // namespace MetalNet

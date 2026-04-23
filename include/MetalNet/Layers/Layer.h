@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 namespace MetalNet {
 
@@ -32,18 +33,20 @@ public:
         extra_input_nodes.push_back(parent);
     }
 
-    virtual void forward(const Tensor& input) {
+    virtual Tensor& forward(const Tensor& input) {
         throw std::runtime_error("forward(Tensor) not implemented");
     }
     virtual void backward(const Tensor& grad) {
         throw std::runtime_error("backward(Tensor) not implemented");
     }
-    virtual void forward(const std::vector<const Tensor*>& inputs) {
+    virtual Tensor& forward(const std::vector<const Tensor*>& inputs) {
         if (inputs.size() == 1) {
-            forward(*inputs[0]);
-            return;
+            return forward(*inputs[0]);
         }
         throw std::runtime_error("Multi-input forward not implemented");
+    }
+    inline Tensor& forward(std::initializer_list<const Tensor*> inputs) {
+        return forward(std::vector<const Tensor*>(inputs));
     }
     virtual void backward_multi(const Tensor& grad) {
         backward(grad);
@@ -54,6 +57,7 @@ public:
     virtual void eval()  { is_training = false; }
     virtual std::vector<Tensor*> get_parameters() { return {}; }
     virtual std::vector<Tensor*> get_states()     { return get_parameters(); }
+    virtual std::string name() const = 0;
 };
 
 } // namespace MetalNet

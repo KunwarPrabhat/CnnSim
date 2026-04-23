@@ -21,7 +21,7 @@ public:
         output_buffer = Tensor(N,total_c,H,W);
     }
 
-    inline void forward(const std::vector<const Tensor*>& inputs) override {
+    inline Tensor& forward(const std::vector<const Tensor*>& inputs) override {
         if (inputs.empty()) throw std::runtime_error("Concat: needs >0 inputs");
         int total_c=0, N=inputs[0]->shape[0], H=inputs[0]->shape[2], W=inputs[0]->shape[3];
         for (int sp : channel_splits) total_c += sp;
@@ -40,6 +40,7 @@ public:
                 cc+=ci;
             }
         }
+        return output_buffer;
     }
 
     inline void backward_multi(const Tensor& go) override {
@@ -57,6 +58,7 @@ public:
             cc+=sp;
         }
     }
+    inline std::string name() const override { return "Concat"; }
 };
 
 } // namespace MetalNet

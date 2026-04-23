@@ -36,12 +36,19 @@ public:
     inline float forward(const Tensor& p, const Tensor& t) override {
         const int N=p.shape[0], C=p.shape[1]; float loss=0.0f;
         #pragma omp parallel for reduction(+:loss)
-        for (int i=0;i<N;++i) {
-            float mx=-std::numeric_limits<float>::infinity();
-            for (int j=0;j<C;++j) mx=std::max(mx,p(i,j));
-            float se=0; for (int j=0;j<C;++j) se+=std::exp(p(i,j)-mx);
-            for (int j=0;j<C;++j) if(t(i,j)>0)
-                loss-=t(i,j)*std::log(std::exp(p(i,j)-mx)/se+1e-9f);
+        for (int i=0; i<N; ++i) {
+            float mx = -std::numeric_limits<float>::infinity();
+            for (int j=0; j<C; ++j) mx = std::max(mx, p(i,j));
+            
+            float sum_exp = 0.0f;
+            for (int j=0; j<C; ++j) sum_exp += std::exp(p(i,j) - mx);
+            float log_sum_exp = mx + std::log(sum_exp);
+            
+            for (int j=0; j<C; ++j) {
+                if (t(i,j) > 0.0f) {
+                    loss -= t(i,j) * (p(i,j) - log_sum_exp);
+                }
+            }
         }
         return loss/N;
     }

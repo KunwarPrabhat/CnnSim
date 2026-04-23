@@ -17,12 +17,18 @@ public:
     }
 
     inline void compile(const std::vector<std::vector<int>>& input_shapes) override {
+        if (input_shapes.empty()) throw std::runtime_error("Dense: input_shapes is empty");
+        int in_features = input_shapes[0].back(); // Assuming flat or (N, D)
+        if (in_features != input_size) {
+            throw std::runtime_error("Dense: dimension mismatch. Expected " + std::to_string(input_size) + 
+                                     ", got " + std::to_string(in_features));
+        }
         const int N = input_shapes[0][0];
         output_buffer = Tensor(N, output_size);
         grad_input_buffer = Tensor(input_shapes[0]);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N = input.shape[0];
         const int K = input_size;
@@ -68,6 +74,7 @@ public:
                 }
             }
         }
+        return output_buffer;
     }
 
     inline void backward(const Tensor& grad_output) override {
@@ -156,6 +163,7 @@ public:
     }
 
     inline std::vector<Tensor*> get_parameters() override { return {&weights, &biases}; }
+    inline std::string name() const override { return "Dense"; }
 };
 
 } // namespace MetalNet

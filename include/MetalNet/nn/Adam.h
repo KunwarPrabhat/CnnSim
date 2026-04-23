@@ -24,10 +24,14 @@ public:
                     m[p]=Tensor(p->shape); m[p].fill(0.0f);
                     v[p]=Tensor(p->shape); v[p].fill(0.0f);
                 }
-                float* pd=p->data.data(); float* gd=p->grad.data();
-                float* md=m[p].data.data(); float* vd=v[p].data.data();
+                auto pd = p->view();
+                auto gd = p->grad_ptr(); // Use pointer for SIMD access
+                auto md = m[p].view();
+                auto vd = v[p].view();
+                int sz = (int)pd.size();
+
                 #pragma omp simd
-                for (int i=0;i<p->size();++i) {
+                for (int i=0; i<sz; ++i) {
                     md[i] = b1*md[i] + (1-b1)*gd[i];
                     vd[i] = b2*vd[i] + (1-b2)*gd[i]*gd[i];
                     float mh = md[i]/bc1, vh = vd[i]/bc2;

@@ -13,7 +13,7 @@ public:
         grad_input_buffer = Tensor(input_shapes[0]);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         const int N=input.shape[0], C=input.shape[1];
         const float* src=input.data.data(); float* dst=output_buffer.data.data();
         for (int n=0;n<N;++n) {
@@ -24,6 +24,7 @@ public:
             float se=0; for (float v:row) se+=std::exp(v-mx);
             for (int j=0;j<C;++j) orow[j]=std::exp(row[j]-mx)/se;
         }
+        return output_buffer;
     }
     inline void backward(const Tensor& go) override {
         const int N=go.shape[0], C=go.shape[1];
@@ -35,6 +36,7 @@ public:
             for (int j=0;j<C;++j) dr[j]=ocrow[j]*(grow[j]-dot);
         }
     }
+    inline std::string name() const override { return "Softmax"; }
 };
 
 } // namespace MetalNet

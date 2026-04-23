@@ -41,8 +41,11 @@ int main() {
     }
     
     DataLoader loader(&ds, 4, true); // batch size 4, shuffle = true
+    
+    std::cout << "Compiling model..." << std::endl;
+    model.compile({3, 28, 28}); // Mandatory for Zero-Allocation loop
 
-    std::cout << "Starting Training loop with DataLoader..." << std::endl;
+    std::cout << "Starting Training loop..." << std::endl;
     model.train(); 
 
     for(int epoch = 1; epoch <= 3; epoch++) {
@@ -84,6 +87,8 @@ int main() {
            << dropout(0.5f)
            << leaky_relu(0.01f)
            << dense(64, 10);
+    
+    model2.compile({3, 28, 28});
 
     std::cout << "Loading Model from test_model.bin..." << std::endl;
     model2.load("test_model.bin");

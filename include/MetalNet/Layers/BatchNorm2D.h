@@ -36,7 +36,7 @@ public:
         return {&gamma, &beta, &running_mean, &running_var};
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N=input.shape[0], C=input.shape[1];
         const int H=input.shape[2], W=input.shape[3];
@@ -111,6 +111,7 @@ public:
                 }
             }
         }
+        return output_buffer;
     }
 
     inline void backward(const Tensor& grad_output) override {
@@ -155,6 +156,7 @@ public:
             }
         }
     }
+    inline std::string name() const override { return "BatchNorm2D"; }
 };
 
 } // namespace MetalNet

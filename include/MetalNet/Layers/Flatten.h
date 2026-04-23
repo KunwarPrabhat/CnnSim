@@ -12,16 +12,18 @@ public:
         grad_input_buffer = Tensor(input_shapes[0]);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         const float* s=input.data.data(); float* d=output_buffer.data.data();
         #pragma omp simd
         for(int i=0;i<input.size();++i) d[i]=s[i];
+        return output_buffer;
     }
     inline void backward(const Tensor& go) override {
         const float* g=go.data.data(); float* di=grad_input_buffer.data.data();
         #pragma omp simd
         for(int i=0;i<go.size();++i) di[i]=g[i];
     }
+    inline std::string name() const override { return "Flatten"; }
 };
 
 } // namespace MetalNet

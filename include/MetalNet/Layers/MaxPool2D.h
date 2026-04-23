@@ -17,7 +17,7 @@ public:
         grad_input_buffer = Tensor(input_shapes[0]);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N=input.shape[0],C=input.shape[1],H=input.shape[2],W=input.shape[3];
         const int OH=output_buffer.shape[2], OW=output_buffer.shape[3];
@@ -36,6 +36,7 @@ public:
                 dc[y*OW+x] = mv;
             }
         }
+        return output_buffer;
     }
 
     inline void backward(const Tensor& go) override {
@@ -61,6 +62,7 @@ public:
             }
         }
     }
+    inline std::string name() const override { return "MaxPool2D"; }
 };
 
 } // namespace MetalNet

@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <queue>
 #include <fstream>
+#include <string>
 #include "../Layers/Layer.h"
 #include "Optimizer.h"
 #include "Loss.h"
@@ -76,8 +77,9 @@ public:
         }
     }
 
-    inline void forward(const Tensor& input) {
-        if (layers.empty()) return;
+    inline Tensor& forward(const Tensor& input) {
+        if (layers.empty()) build_graph(); 
+        
         for (auto& layer : layers) {
             std::vector<const Tensor*> ins;
             if (layer->input_nodes.empty()) {
@@ -111,6 +113,7 @@ public:
             
             layer->forward(ins);
         }
+        return layers.back()->output_buffer;
     }
 
     inline void backward(const Tensor& grad_output) {
@@ -174,7 +177,26 @@ public:
     inline void eval()  { for (auto& l : layers) l->eval();  }
 
     inline void save(const std::string& filename) {
+        std::string json = "{ \"layers\": [";
+        for (size_t i = 0; i < layers.size(); ++i) {
+            json += "{\"name\":\"" + layers[i]->name() + "\", \"params\": [";
+            auto states = layers[i]->get_states();
+            for (size_t j = 0; j < states.size(); ++j) {
+                json += "{\"shape\": [";
+                for (size_t k = 0; k < states[j]->shape.size(); ++k) {
+                    json += std::to_string(states[j]->shape[k]) + (k == states[j]->shape.size() - 1 ? "" : ",");
+                }
+                json += "], \"size\":" + std::to_string(states[j]->size()) + "}" + (j == states.size() - 1 ? "" : ",");
+            }
+            json += std::string("]}") + (i == layers.size() - 1 ? "" : ",");
+        }
+        json += "] }";
+
         std::ofstream file(filename, std::ios::binary);
+        uint64_t head_sz = json.size();
+        file.write(reinterpret_cast<const char*>(&head_sz), sizeof(head_sz));
+        file.write(json.data(), head_sz);
+
         for (auto& layer : layers)
             for (Tensor* s : layer->get_states())
                 file.write(reinterpret_cast<const char*>(s->data.data()),
@@ -183,6 +205,15 @@ public:
 
     inline void load(const std::string& filename) {
         std::ifstream file(filename, std::ios::binary);
+        if (!file.is_open()) return;
+
+        uint64_t head_sz;
+        file.read(reinterpret_cast<char*>(&head_sz), sizeof(head_sz));
+        std::string json(head_sz, ' ');
+        file.read(&json[0], head_sz);
+        // Simple JSON header for metadata - we rely on the binary order for now, 
+        // but the header is there for future validation/inspection.
+
         for (auto& layer : layers)
             for (Tensor* s : layer->get_states())
                 file.read(reinterpret_cast<char*>(s->data.data()),

@@ -65,4 +65,13 @@ inline void col2im_batch(const Tensor& col, Tensor& d_in, int b, const std::vect
     }
 }
 
+inline Tensor im2col(const Tensor& input, int kernel_size, int stride=1, int padding=0) {
+    const int H  = input.shape[2], W  = input.shape[3];
+    const int OH = (H + 2*padding - kernel_size) / stride + 1;
+    const int OW = (W + 2*padding - kernel_size) / stride + 1;
+    Tensor col(input.shape[1] * kernel_size * kernel_size, OH * OW);
+    im2col_batch(input, col, 0, kernel_size, stride, padding);
+    return col;
+}
+
 } // namespace MetalNet

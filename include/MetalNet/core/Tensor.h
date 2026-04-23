@@ -7,6 +7,7 @@
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace MetalNet {

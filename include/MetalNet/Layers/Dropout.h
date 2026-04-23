@@ -16,12 +16,12 @@ public:
         mask = Tensor(input_shapes[0]);
     }
 
-    inline void forward(const Tensor& input) override {
+    inline Tensor& forward(const Tensor& input) override {
         if (!is_training) {
             const float* s=input.data.data(); float* d=output_buffer.data.data();
             #pragma omp simd
             for(int i=0;i<input.size();++i) d[i]=s[i];
-            return;
+            return output_buffer;
         }
         const float sc=1.0f/(1.0f-rate);
         float* m=mask.data.data(); float* o=output_buffer.data.data(); const float* s=input.data.data();
@@ -29,6 +29,7 @@ public:
             float r=(float)rand()/RAND_MAX;
             m[i]=r>rate?1.0f:0.0f; o[i]=m[i]*s[i]*sc;
         }
+        return output_buffer;
     }
     inline void backward(const Tensor& go) override {
         if (!is_training) {
@@ -42,6 +43,7 @@ public:
         #pragma omp simd
         for (int i=0;i<go.size();++i) di[i]=g[i]*m[i]*sc;
     }
+    inline std::string name() const override { return "Dropout"; }
 };
 
 } // namespace MetalNet
