@@ -11,8 +11,10 @@ public:
     int   t = 0;
     std::unordered_map<Tensor*, Tensor> m, v;
 
-    inline Adam(float l=0.001f, float b1_=0.9f, float b2_=0.999f, float e=1e-8f)
-        : lr(l), b1(b1_), b2(b2_), eps(e) {}
+    float weight_decay;
+
+    inline Adam(float l=0.001f, float b1_=0.9f, float b2_=0.999f, float e=1e-8f, float wd=0.0f)
+        : lr(l), b1(b1_), b2(b2_), eps(e), weight_decay(wd) {}
 
     inline void step(std::vector<std::shared_ptr<Layer>>& layers) override {
         ++t;
@@ -22,8 +24,17 @@ public:
         float total_norm_sq = 0.0f;
         for (auto& layer : layers) {
             for (Tensor* p : layer->get_parameters()) {
+                auto pd = p->data_ptr();
                 auto gd = p->grad_ptr();
                 int sz = p->size();
+                
+                if (weight_decay > 0.0f) {
+                    #pragma omp simd
+                    for (int i=0; i<sz; ++i) {
+                        gd[i] += weight_decay * pd[i];
+                    }
+                }
+                
                 float local_sum = 0.0f;
                 #pragma omp simd reduction(+:local_sum)
                 for (int i=0; i<sz; ++i) {
