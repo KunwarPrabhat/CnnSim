@@ -62,10 +62,52 @@ public:
         for (int i=0;i<images.size();++i) d[i]/=255.0f;
     }
 
-    static inline Dataset load_csv(const std::string& path, int num_samples, int num_pixels, bool has_header = false, int num_classes = 10, int label_col = 0) {
+    static inline Dataset load_csv(const std::string& path, int num_samples, int num_pixels, bool has_header = false, int num_classes = 10, int manual_label_col = -1) {
         std::ifstream file(path);
         if (!file.is_open()) {
             throw std::runtime_error("Cannot open CSV file: " + path);
+        }
+
+        std::string line;
+        line.reserve(8192);
+
+        if (has_header) {
+            std::getline(file, line);
+        }
+
+        std::vector<std::string> peek_buffer;
+        const int PEEK_MAX = std::min(num_samples, 50);
+        for (int i = 0; i < PEEK_MAX; ++i) {
+            if (std::getline(file, line)) peek_buffer.push_back(line);
+            else break;
+        }
+
+        int label_col = manual_label_col;
+        if (label_col == -1) {
+            int max_col_0 = -1;
+            int max_col_last = -1;
+
+            for (const auto& l : peek_buffer) {
+                size_t first_comma = l.find(',');
+                if (first_comma == std::string::npos) continue;
+                size_t last_comma = l.find_last_of(',');
+
+                int v0 = -1;
+                std::from_chars(l.data(), l.data() + first_comma, v0);
+                max_col_0 = std::max(max_col_0, v0);
+
+                int vlast = -1;
+                std::from_chars(l.data() + last_comma + 1, l.data() + l.length(), vlast);
+                max_col_last = std::max(max_col_last, vlast);
+            }
+
+            if (max_col_0 < num_classes && max_col_last >= num_classes) {
+                label_col = 0;
+            } else if (max_col_last < num_classes && max_col_0 >= num_classes) {
+                label_col = num_pixels; // The last valid column
+            } else {
+                throw std::runtime_error("CSV Format Ambiguity: Auto-detect failed. max_col_0=" + std::to_string(max_col_0) + ", max_col_last=" + std::to_string(max_col_last));
+            }
         }
 
         Dataset ds;
@@ -77,37 +119,37 @@ public:
         ds.labels = Tensor(num_samples, num_classes);
         ds.labels.fill(0.0f);
 
-        std::string line;
-        line.reserve(8192);
-
-        if (has_header) {
-            std::getline(file, line);
-        }
-
         float* img_data = ds.images.data.data();
         float* lbl_data = ds.labels.data.data();
         int img_offset = 0;
         int lbl_offset = 0;
 
         for (int i = 0; i < num_samples; ++i) {
-            if (!std::getline(file, line)) break;
-            
+            const std::string* current_line;
+            if (i < (int)peek_buffer.size()) {
+                current_line = &peek_buffer[i];
+            } else {
+                if (!std::getline(file, line)) break;
+                current_line = &line;
+            }
+
             size_t start = 0;
-            size_t end = line.find(',');
+            size_t end = current_line->find(',');
             
             int col_idx = 0;
             int label = -1;
             int p = 0;
 
-            while (start < line.length()) {
-                if (end == std::string::npos) end = line.length();
+            while (start < current_line->length()) {
+                if (end == std::string::npos) end = current_line->length();
                 
                 if (col_idx == label_col) {
-                    std::from_chars(line.data() + start, line.data() + end, label);
+                    std::from_chars(current_line->data() + start, current_line->data() + end, label);
                     if (label >= 0 && label < num_classes) {
                         lbl_data[lbl_offset + label] = 1.0f;
                     }
                     if (i == 0) {
+                        std::cout << "[DEBUG] Auto-Detect Resolved: Label is Column " << label_col << "\n";
                         std::cout << "[DEBUG] First CSV Row -> Parsed Label: " << label << " | One-Hot: [";
                         for (int cl = 0; cl < num_classes; ++cl) {
                             std::cout << lbl_data[lbl_offset + cl] << (cl == num_classes - 1 ? "" : ", ");
@@ -116,14 +158,14 @@ public:
                     }
                 } else if (p < num_pixels) {
                     int val = 0;
-                    std::from_chars(line.data() + start, line.data() + end, val);
+                    std::from_chars(current_line->data() + start, current_line->data() + end, val);
                     img_data[img_offset++] = val / 255.0f;
                     p++;
                 }
                 
                 col_idx++;
                 start = end + 1;
-                end = line.find(',', start);
+                end = current_line->find(',', start);
             }
             lbl_offset += num_classes;
         }
