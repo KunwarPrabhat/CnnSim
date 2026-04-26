@@ -117,7 +117,7 @@ public:
             } else if (max_col_last < num_classes && max_col_0 >= num_classes) {
                 label_col = num_features; // The last valid column
             } else {
-                throw std::runtime_error("CSV Format Ambiguity: Auto-detect failed. max_col_0=" + std::to_string(max_col_0) + ", max_col_last=" + std::to_string(max_col_last));
+                throw std::runtime_error("CSV Format Ambiguity: Cannot safely auto-detect label. Please explicitly pass manual_label_col (e.g., 0 for first column).");
             }
         }
 
@@ -179,9 +179,9 @@ public:
                         std::cout << "]\n";
                     }
                 } else if (p < num_features) {
-                    int val = 0;
+                    float val = 0.0f;
                     std::from_chars(line.data() + start, line.data() + end, val);
-                    img_data[img_offset++] = val / 255.0f;
+                    img_data[img_offset++] = val;
                     p++;
                 }
                 
