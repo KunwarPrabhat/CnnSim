@@ -1,5 +1,6 @@
 #pragma once
 #include "Layer.h"
+#include <omp.h>
 
 #include "../core/Im2Col.h"
 
@@ -9,7 +10,8 @@ class Conv2D : public Layer {
 public:
     int in_channels, out_channels, kernel_size, stride, padding;
     Tensor weights, biases;
-    Tensor col_buffer, dcol_buffer;
+    std::vector<Tensor> col_buffers, dcol_buffers;
+    std::vector<Tensor> local_grad_weights, local_grad_biases;
 
     inline Conv2D(int in_c, int out_c, int k, int s=1, int p=0)
         : in_channels(in_c), out_channels(out_c), kernel_size(k), stride(s), padding(p) {
@@ -36,8 +38,17 @@ public:
 
         output_buffer = Tensor(N, out_channels, OH, OW);
         grad_input_buffer = Tensor(input_shapes[0]);
-        col_buffer = Tensor(rows, cols);
-        dcol_buffer = Tensor(rows, cols);
+        col_buffers.clear(); dcol_buffers.clear();
+        for (int i = 0; i < N; ++i) {
+            col_buffers.emplace_back(rows, cols);
+            dcol_buffers.emplace_back(rows, cols);
+        }
+        int max_threads = omp_get_max_threads();
+        local_grad_weights.clear(); local_grad_biases.clear();
+        for (int t = 0; t < max_threads; ++t) {
+            local_grad_weights.emplace_back(std::vector<int>{out_channels, in_channels, kernel_size, kernel_size});
+            local_grad_biases.emplace_back(out_channels, 1);
+        }
     }
 
     inline Tensor& forward(const Tensor& input) override {
@@ -53,12 +64,13 @@ public:
         
         constexpr int BLOCK_SIZE = 64;
 
+        #pragma omp parallel for schedule(static)
         for (int n = 0; n < N; ++n) {
-            im2col_batch(input, col_buffer, n, kernel_size, stride, padding);
-            const float* col = col_buffer.data.data();
+            im2col_batch(input, col_buffers[n], n, kernel_size, stride, padding);
+            const float* col = col_buffers[n].data.data();
             float* out_n = out + n * (M * N_cols);
 
-            #pragma omp parallel for schedule(static)
+            // #pragma omp parallel for schedule(static)
             for (int i = 0; i < M; ++i) {
                 float* o_row = out_n + i * N_cols;
                 float bias_val = b[i];
@@ -68,7 +80,7 @@ public:
                 }
             }
 
-            #pragma omp parallel for collapse(2) schedule(static)
+            // #pragma omp parallel for collapse(2) schedule(static)
             for (int i0 = 0; i0 < M; i0 += BLOCK_SIZE) {
                 for (int j0 = 0; j0 < N_cols; j0 += BLOCK_SIZE) {
                     int i_max = std::min(i0 + BLOCK_SIZE, M);
@@ -109,16 +121,27 @@ public:
         grad_input_buffer.fill(0.0f);
         constexpr int BLOCK_SIZE = 64;
 
+        int max_threads = omp_get_max_threads();
+        for (int t = 0; t < max_threads; ++t) {
+            local_grad_weights[t].fill(0.0f);
+            local_grad_biases[t].fill(0.0f);
+        }
+
+        #pragma omp parallel for schedule(static)
         for (int n = 0; n < N; ++n) {
-            im2col_batch(*cached_input_ptr, col_buffer, n, kernel_size, stride, padding);
-            const float* col = col_buffer.data.data();
+            int tid = omp_get_thread_num();
+            float* local_dW = local_grad_weights[tid].data.data();
+            float* local_db = local_grad_biases[tid].data.data();
+
+            im2col_batch(*cached_input_ptr, col_buffers[n], n, kernel_size, stride, padding);
+            const float* col = col_buffers[n].data.data();
             const float* go_n = go + n * (M * N_cols);
-            float* dcol = dcol_buffer.data.data();
+            float* dcol = dcol_buffers[n].data.data();
             
-            dcol_buffer.fill(0.0f);
+            dcol_buffers[n].fill(0.0f);
             
             // dcol = W^T @ go_n
-            #pragma omp parallel for collapse(2) schedule(static)
+            // dcol = W^T @ go_n
             for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
                 for (int j0 = 0; j0 < N_cols; j0 += BLOCK_SIZE) {
                     int k_max = std::min(k0 + BLOCK_SIZE, K);
@@ -140,10 +163,9 @@ public:
                 }
             }
             
-            col2im_batch(dcol_buffer, grad_input_buffer, n, cached_input_ptr->shape, kernel_size, stride, padding);
+            col2im_batch(dcol_buffers[n], grad_input_buffer, n, cached_input_ptr->shape, kernel_size, stride, padding);
 
             // dW += go_n @ col^T
-            #pragma omp parallel for collapse(2) schedule(static)
             for (int i0 = 0; i0 < M; i0 += BLOCK_SIZE) {
                 for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
                     int i_max = std::min(i0 + BLOCK_SIZE, M);
@@ -151,7 +173,7 @@ public:
                     for (int j0 = 0; j0 < N_cols; j0 += BLOCK_SIZE) {
                         int j_max = std::min(j0 + BLOCK_SIZE, N_cols);
                         for (int i = i0; i < i_max; ++i) {
-                            float* dw_row = dW + i * K;
+                            float* dw_row = local_dW + i * K;
                             const float* go_row = go_n + i * N_cols;
                             for (int k = k0; k < k_max; ++k) {
                                 const float* col_row = col + k * N_cols;
@@ -168,7 +190,7 @@ public:
             }
 
             // db += sum(go_n, axis=1)
-            #pragma omp parallel for schedule(static)
+            // db += sum(go_n, axis=1)
             for (int i = 0; i < M; ++i) {
                 float acc = 0.0f;
                 const float* go_row = go_n + i * N_cols;
@@ -176,7 +198,20 @@ public:
                 for (int j = 0; j < N_cols; ++j) {
                     acc += go_row[j];
                 }
-                db[i] += acc;
+                local_db[i] += acc;
+            }
+        }
+
+        for (int t = 0; t < max_threads; ++t) {
+            const float* l_dW = local_grad_weights[t].data.data();
+            const float* l_db = local_grad_biases[t].data.data();
+            #pragma omp simd
+            for (int i = 0; i < M * K; ++i) {
+                dW[i] += l_dW[i];
+            }
+            #pragma omp simd
+            for (int i = 0; i < M; ++i) {
+                db[i] += l_db[i];
             }
         }
     }

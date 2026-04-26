@@ -13,7 +13,6 @@ inline void im2col_batch(const Tensor& input, Tensor& col, int b, int kernel_siz
     const float* src = input.data.data() + b * (C * H * W);
     float*       dst = col.data.data();
 
-    #pragma omp parallel for schedule(static)
     for (int c = 0; c < C; ++c) {
         for (int ky = 0; ky < kernel_size; ++ky) {
             for (int kx = 0; kx < kernel_size; ++kx) {
@@ -44,7 +43,6 @@ inline void col2im_batch(const Tensor& col, Tensor& d_in, int b, const std::vect
     const float* src = col.data.data();
     float*       dst = d_in.data.data() + b * (C * H * W);
 
-    #pragma omp parallel for schedule(static)
     for (int c = 0; c < C; ++c) {
         for (int ky = 0; ky < kernel_size; ++ky) {
             for (int kx = 0; kx < kernel_size; ++kx) {
@@ -55,7 +53,6 @@ inline void col2im_batch(const Tensor& col, Tensor& d_in, int b, const std::vect
                         int ix = x*stride - padding + kx;
                         int col_idx = y*OW + x;
                         if (iy>=0 && iy<H && ix>=0 && ix<W)
-                            #pragma omp atomic
                             dst[c*(H*W) + iy*W + ix] +=
                                 src[row*cols + col_idx];
                     }

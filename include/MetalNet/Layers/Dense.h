@@ -1,6 +1,7 @@
 #pragma once
 #include "Layer.h"
 #include <span>
+#include <omp.h>
 
 namespace MetalNet {
 
@@ -8,6 +9,7 @@ class Dense : public Layer {
 public:
     int    input_size, output_size;
     Tensor weights, biases;
+    std::vector<Tensor> local_grad_weights, local_grad_biases;
 
     inline Dense(int in_sz, int out_sz) : input_size(in_sz), output_size(out_sz) {
         weights = Tensor(in_sz, out_sz);
@@ -27,6 +29,13 @@ public:
         const int N = input_shapes[0][0];
         output_buffer = Tensor(N, output_size);
         grad_input_buffer = Tensor(input_shapes[0]);
+
+        int max_threads = omp_get_max_threads();
+        local_grad_weights.clear(); local_grad_biases.clear();
+        for (int t = 0; t < max_threads; ++t) {
+            local_grad_weights.emplace_back(input_size, output_size);
+            local_grad_biases.emplace_back(1, output_size);
+        }
     }
 
     inline Tensor& forward(const Tensor& input) override {
@@ -43,23 +52,21 @@ public:
         constexpr int BLOCK_SIZE = 64;
 
         #pragma omp parallel for schedule(static)
-        for (int i = 0; i < N; ++i) {
-            float* o_row = out + i * M;
-            #pragma omp simd
-            for (int j = 0; j < M; ++j) {
-                o_row[j] = b[j];
-            }
-        }
-
-        #pragma omp parallel for collapse(2) schedule(static)
         for (int i0 = 0; i0 < N; i0 += BLOCK_SIZE) {
-            for (int j0 = 0; j0 < M; j0 += BLOCK_SIZE) {
-                int i_max = std::min(i0 + BLOCK_SIZE, N);
-                int j_max = std::min(j0 + BLOCK_SIZE, M);
-                
-                for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
-                    int k_max = std::min(k0 + BLOCK_SIZE, K);
-                    
+            int i_max = std::min(i0 + BLOCK_SIZE, N);
+            
+            for (int i = i0; i < i_max; ++i) {
+                float* o_row = out + i * M;
+                #pragma omp simd
+                for (int j = 0; j < M; ++j) {
+                    o_row[j] = b[j];
+                }
+            }
+
+            for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
+                int k_max = std::min(k0 + BLOCK_SIZE, K);
+                for (int j0 = 0; j0 < M; j0 += BLOCK_SIZE) {
+                    int j_max = std::min(j0 + BLOCK_SIZE, M);
                     for (int i = i0; i < i_max; ++i) {
                         float* o_row = out + i * M;
                         const float* i_row = inp + i * K;
@@ -93,11 +100,21 @@ public:
         grad_input_buffer.fill(0.0f);
         constexpr int BLOCK_SIZE = 64;
 
-        // di = go @ W^T
-        #pragma omp parallel for collapse(2) schedule(static)
+        int max_threads = omp_get_max_threads();
+        for (int t = 0; t < max_threads; ++t) {
+            local_grad_weights[t].fill(0.0f);
+            local_grad_biases[t].fill(0.0f);
+        }
+
+        // di = go @ W^T, dW = inp^T @ go, db = sum(go)
+        #pragma omp parallel for schedule(static)
         for (int i0 = 0; i0 < N; i0 += BLOCK_SIZE) {
+            int i_max = std::min(i0 + BLOCK_SIZE, N);
+            int tid = omp_get_thread_num();
+            float* local_dW = local_grad_weights[tid].data.data();
+            float* local_db = local_grad_biases[tid].data.data();
+
             for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
-                int i_max = std::min(i0 + BLOCK_SIZE, N);
                 int k_max = std::min(k0 + BLOCK_SIZE, K);
                 for (int j0 = 0; j0 < M; j0 += BLOCK_SIZE) {
                     int j_max = std::min(j0 + BLOCK_SIZE, M);
@@ -116,18 +133,13 @@ public:
                     }
                 }
             }
-        }
 
-        // dW = inp^T @ go
-        #pragma omp parallel for collapse(2) schedule(static)
-        for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
-            for (int j0 = 0; j0 < M; j0 += BLOCK_SIZE) {
+            for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
                 int k_max = std::min(k0 + BLOCK_SIZE, K);
-                int j_max = std::min(j0 + BLOCK_SIZE, M);
-                for (int i0 = 0; i0 < N; i0 += BLOCK_SIZE) {
-                    int i_max = std::min(i0 + BLOCK_SIZE, N);
+                for (int j0 = 0; j0 < M; j0 += BLOCK_SIZE) {
+                    int j_max = std::min(j0 + BLOCK_SIZE, M);
                     for (int k = k0; k < k_max; ++k) {
-                        float* dw_row = dW + k * M;
+                        float* dw_row = local_dW + k * M;
                         for (int i = i0; i < i_max; ++i) {
                             float val = inp[i * K + k]; // inp^T
                             const float* go_row = go + i * M;
@@ -139,17 +151,23 @@ public:
                     }
                 }
             }
+
+            for (int i = i0; i < i_max; ++i) {
+                const float* go_row = go + i * M;
+                #pragma omp simd
+                for (int j = 0; j < M; ++j) {
+                    local_db[j] += go_row[j];
+                }
+            }
         }
 
-        // db = sum(go)
-        #pragma omp parallel for schedule(static)
-        for (int j = 0; j < M; ++j) {
-            float acc = 0.0f;
-            #pragma omp simd reduction(+:acc)
-            for (int i = 0; i < N; ++i) {
-                acc += go[i * M + j];
-            }
-            db[j] += acc;
+        for (int t = 0; t < max_threads; ++t) {
+            const float* l_dW = local_grad_weights[t].data.data();
+            const float* l_db = local_grad_biases[t].data.data();
+            #pragma omp simd
+            for (int i = 0; i < K * M; ++i) dW[i] += l_dW[i];
+            #pragma omp simd
+            for (int i = 0; i < M; ++i) db[i] += l_db[i];
         }
     }
 
