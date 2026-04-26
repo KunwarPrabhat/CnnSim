@@ -29,18 +29,20 @@ public:
     std::vector<int>  shift_xs;
     bool             augment;
 
-    // Async prefetching
+    // Async prefetching strictly deadlock-proofed
     std::thread             prefetch_thread;
     std::mutex              mtx;
     std::condition_variable cv_produce;
     std::condition_variable cv_consume;
-    bool                    stop_thread;
-    bool                    buffer_B_ready;
+    bool                    stop_thread;     // shutdown_flag
+    bool                    buffer_B_ready;  // batch_ready
+    bool                    is_eof;          // End of File marker for the current epoch
     bool                    prefetch_active;
 
     inline DataLoader(Dataset* ds, int bs, bool sh=true, bool drop_last_=true, bool aug=false)
         : dataset(ds), batch_size(bs), shuffle(sh), drop_last(drop_last_), augment(aug), current_idx(0), rng(std::random_device{}()),
-          use_A(true), stop_thread(false), buffer_B_ready(false), prefetch_active(false) {
+          use_A(true), stop_thread(false), buffer_B_ready(false), is_eof(false), prefetch_active(false) {
+        
         if (dataset && dataset->images.dims()>0) {
             int n=dataset->images.shape[0];
             indices.resize(n);
@@ -59,15 +61,9 @@ public:
             shift_ys.resize(batch_size);
             shift_xs.resize(batch_size);
 
-            reset();
-
-            // Start prefetch thread
             prefetch_active = true;
             prefetch_thread = std::thread(&DataLoader::prefetch_loop, this);
-            
-            // Prefetch first batch into buffer_B synchronously
-            fill_buffer(batch_x_B, batch_y_B);
-            buffer_B_ready = true;
+            reset(); // Reset primes the thread for Epoch 1
         }
     }
 
@@ -77,33 +73,44 @@ public:
                 std::lock_guard<std::mutex> lock(mtx);
                 stop_thread = true;
             }
-            cv_produce.notify_one();
+            cv_produce.notify_all();
+            cv_consume.notify_all();
             if (prefetch_thread.joinable()) {
                 prefetch_thread.join();
             }
         }
     }
 
-    inline bool has_next() const {
+    // Checking if there are sufficient dataset items internally
+    inline bool has_next_internal() const {
         if (!dataset || dataset->images.dims()==0) return false;
         if (drop_last) return current_idx + batch_size <= dataset->images.shape[0];
         return current_idx < dataset->images.shape[0];
     }
 
+    inline bool has_next() {
+        std::unique_lock<std::mutex> lock(mtx);
+        // Wait securely until a batch is either prepared, or EOF is hit, or the thread shuts down.
+        cv_consume.wait(lock, [this]() { return buffer_B_ready || stop_thread; });
+        if (stop_thread) return false;
+        return !is_eof;
+    }
+
     inline void reset() {
+        std::unique_lock<std::mutex> lock(mtx);
         current_idx = 0;
         if (shuffle && !indices.empty()) {
             std::shuffle(indices.begin(), indices.end(), rng);
         }
-        
-        if (prefetch_active) {
-            std::lock_guard<std::mutex> lock(mtx);
-            buffer_B_ready = false;
-        }
+        is_eof = false;
+        buffer_B_ready = false; 
+
+        // Wake up background thread to immediately prefetch Epoch 2 (or 1)
+        lock.unlock();
+        cv_produce.notify_one();
     }
 
     inline void fill_buffer(Tensor& bx, Tensor& by) {
-        if (!has_next()) return;
         const int ns=dataset->images.shape[0];
         const int ei=std::min(current_idx+batch_size, ns);
         const int bs=ei-current_idx;
@@ -128,7 +135,6 @@ public:
             }
         }
 
-        // Removed pragma omp parallel to avoid interference with master thread
         for (int b=0; b<bs; ++b) {
             int idx = indices[current_idx+b];
             const float* sx = src_x + idx*(C*H*W);
@@ -150,7 +156,7 @@ public:
                             if (sy >= 0 && sy < H && sx_idx >= 0 && sx_idx < W) {
                                 val = sx[c * H * W + sy * W + sx_idx];
                             }
-                            tx[y * W * C + x * C + c] = val; // NHWC
+                            tx[y * W * C + x * C + c] = val; // NHWC format
                         }
                     }
                 }
@@ -175,34 +181,43 @@ public:
     inline void prefetch_loop() {
         while (true) {
             std::unique_lock<std::mutex> lock(mtx);
+            // Wait securely to produce a new batch (prevent spurious wakeups and deadlocks)
             cv_produce.wait(lock, [this]() { return stop_thread || !buffer_B_ready; });
             
             if (stop_thread) break;
             
-            if (has_next()) {
+            if (has_next_internal()) {
                 Tensor* fill_x = use_A ? &batch_x_B : &batch_x_A;
                 Tensor* fill_y = use_A ? &batch_y_B : &batch_y_A;
                 fill_buffer(*fill_x, *fill_y);
+                is_eof = false;
+            } else {
+                // Background thread hit the epoch boundary limit
+                is_eof = true;
             }
             
             buffer_B_ready = true;
             lock.unlock();
+            
+            // Notify the consumer (main thread) that validation/buffer swap is completely ready
             cv_consume.notify_one();
         }
     }
 
     inline std::pair<Tensor&, Tensor&> next_batch() {
         std::unique_lock<std::mutex> lock(mtx);
-        cv_consume.wait(lock, [this]() { return buffer_B_ready; });
+        // Wait purely for safety to guarantee no dead read. 
+        cv_consume.wait(lock, [this]() { return buffer_B_ready || stop_thread; });
         
         Tensor* out_x = use_A ? &batch_x_B : &batch_x_A;
         Tensor* out_y = use_A ? &batch_y_B : &batch_y_A;
         
+        // Ping Pong buffer pointers conceptually
         use_A = !use_A;
         buffer_B_ready = false;
         
         lock.unlock();
-        cv_produce.notify_one();
+        cv_produce.notify_one(); // Wake up prefetcher to fetch the NEXT element immediately
         
         return std::pair<Tensor&, Tensor&>(*out_x, *out_y);
     }
