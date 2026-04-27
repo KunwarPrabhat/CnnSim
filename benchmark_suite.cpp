@@ -8,7 +8,6 @@
 #include <xmmintrin.h>
 #include <pmmintrin.h>
 
-// --- OS-Level Memory Tracking (Windows) ---
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -18,13 +17,11 @@ double get_peak_ram_mb() {
     return (double)pmc.PeakWorkingSetSize / (1024.0 * 1024.0);
 }
 #else
-double get_peak_ram_mb() { return 0.0; } // Fallback for Linux
+double get_peak_ram_mb() { return 0.0; } 
 #endif
-// ------------------------------------------
 
 using namespace MetalNet;
 
-// Helper to build the 4-Layer Architecture dynamically
 Model build_vgg_model() {
     Model model;
     model << conv2d(1, 64, 3, 1, 1) << batchnorm2d(64) << leaky_relu(0.01f)
@@ -36,7 +33,6 @@ Model build_vgg_model() {
           << flatten() << dense(128 * 7 * 7, 10);
     return model;
 }
-
 int main() {
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
@@ -46,11 +42,10 @@ int main() {
     std::cout << "====================================================\n\n";
 
     std::cout << "[*] Loading MNIST Dataset...\n";
-    Dataset full_ds = Dataset::load_csv("data/mnist_train.csv", true, 10, {1, 28, 28}, 0);
+    Dataset full_ds = Dataset::load_csv("mnist_train.csv", true, 10, {1, 28, 28}, 0);
     full_ds.normalize(); 
     
-    // Test dataset sizes
-    int total_samples = 2000; // Reduced sample size just for the benchmark suite to run quickly
+    int total_samples = 2000; 
     Tensor train_img(total_samples, 1, 28, 28);
     Tensor train_lbl(total_samples, 10);
     std::copy(full_ds.images.data.begin(), full_ds.images.data.begin() + train_img.size(), train_img.data.begin());
@@ -58,59 +53,71 @@ int main() {
     Dataset train_ds; train_ds.images = train_img; train_ds.labels = train_lbl;
 
     // ------------------------------------------------------------------
-    // TEST 1: AMDAHL's THREAD SCALING (1, 2, 4, 8, 16 Cores)
+    // TEST 1: CPU THREAD SCALING (INFERENCE ONLY - MATCHING PYTORCH)
     // ------------------------------------------------------------------
-    std::cout << "\n--- TEST 1: OPENMP THREAD SCALING (Batch 128) ---\n";
+    std::cout << "\n--- TEST 1: CPU THREAD SCALING (Batch 128) ---\n";
     std::vector<int> thread_counts = {1, 2, 4, 8, 16};
     
     for (int t : thread_counts) {
         omp_set_num_threads(t);
-        Model m = build_vgg_model();
+        
+        // Rebuild model per thread test to match Python exactly
+        Model m = build_vgg_model(); 
         m.compile({128, 1, 28, 28});
+        m.eval(); // Equivalant to model.eval() and prep for no_grad behavior
+
         DataLoader loader(&train_ds, 128, false, false);
         
-        auto start = std::chrono::high_resolution_clock::now();
-        while(loader.has_next()) {
+        // Warmup
+        if (loader.has_next()) {
             auto [bx, by] = loader.next_batch();
             m.forward(bx);
         }
+        loader.reset();
+
+        auto start = std::chrono::high_resolution_clock::now();
+        int batches = 0;
+        
+        // FORWARD ONLY: Mimicking PyTorch's `with torch.no_grad():`
+        while(loader.has_next()) {
+            auto [bx, by] = loader.next_batch();
+            m.forward(bx); 
+            batches++;
+        }
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> dur = end - start;
-        std::cout << "Threads: " << std::setw(2) << t << " | Throughput: " 
-                  << std::fixed << std::setprecision(2) << (total_samples / dur.count()) << " img/sec\n";
+        double throughput = (batches * 128) / dur.count();
+        
+        printf("Threads: %02d | Throughput: %.2f img/sec\n", t, throughput);
     }
 
     // ------------------------------------------------------------------
-    // TEST 2: REAL-TIME INFERENCE LATENCY (Batch 1)
+    // TEST 2: INFERENCE LATENCY
     // ------------------------------------------------------------------
     std::cout << "\n--- TEST 2: INFERENCE LATENCY (Batch 1, 1 Thread) ---\n";
-    omp_set_num_threads(1); // Real-time inference usually runs on a single thread
+    omp_set_num_threads(1); 
     Model inf_model = build_vgg_model();
     inf_model.compile({1, 1, 28, 28});
     inf_model.eval();
-    Tensor single_img(1, 1, 28, 28); // Dummy image
+    Tensor single_img(1, 1, 28, 28); 
 
-    // Warmup
     for(int i=0; i<10; i++) inf_model.forward(single_img);
-
     auto inf_start = std::chrono::high_resolution_clock::now();
     int inf_runs = 500;
-    for(int i=0; i<inf_runs; i++) {
-        inf_model.forward(single_img);
-    }
+    for(int i=0; i<inf_runs; i++) inf_model.forward(single_img);
     auto inf_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> inf_dur = inf_end - inf_start;
-    std::cout << "Avg Latency per image: " << (inf_dur.count() / inf_runs) << " ms\n";
+    
+    printf("Avg Latency per image: %.4f ms\n", (inf_dur.count() / inf_runs));
 
     // ------------------------------------------------------------------
-    // TEST 3: PEAK MEMORY FOOTPRINT (Zero-Allocation Validation)
+    // TEST 3: PEAK RAM
     // ------------------------------------------------------------------
-    std::cout << "\n--- TEST 3: PEAK RAM USAGE (Zero-Allocation) ---\n";
-    std::cout << "Peak Working Set Size: " << get_peak_ram_mb() << " MB\n";
+    std::cout << "\n--- TEST 3: PEAK RAM USAGE ---\n";
+    printf("Peak Working Set Size: %.2f MB\n", get_peak_ram_mb());
     
     std::cout << "\n====================================================\n";
     std::cout << "  BENCHMARK SUITE COMPLETE\n";
     std::cout << "====================================================\n";
-
     return 0;
 }

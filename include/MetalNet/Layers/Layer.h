@@ -19,9 +19,9 @@ public:
     std::vector<Tensor> multi_grad_input_buffers;
     Tensor temp_add_buffer;
     
-    std::vector<std::shared_ptr<Layer>> input_nodes;
-    std::vector<std::shared_ptr<Layer>> output_nodes;
-    std::vector<std::shared_ptr<Layer>> extra_input_nodes;
+    std::vector<Layer*> input_nodes;
+    std::vector<Layer*> output_nodes;
+    std::vector<Layer*> extra_input_nodes;
     std::vector<const Tensor*> extra_inputs;
     
     const Tensor* cached_input_ptr = nullptr;
@@ -29,7 +29,7 @@ public:
     bool   has_grad_cache = false;
     bool   is_training    = true;
 
-    inline void add_extra_input_source(std::shared_ptr<Layer> parent) {
+    inline void add_extra_input_source(Layer* parent) {
         extra_input_nodes.push_back(parent);
     }
 

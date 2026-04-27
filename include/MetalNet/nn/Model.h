@@ -14,15 +14,15 @@ namespace MetalNet {
 class Model {
 public:
     std::vector<std::shared_ptr<Layer>> nodes;
-    std::vector<std::shared_ptr<Layer>> layers;
+    std::vector<Layer*> layers;
 
     inline void add_node(std::shared_ptr<Layer> n) {
         nodes.push_back(n);
     }
 
     inline void connect(std::shared_ptr<Layer> from, std::shared_ptr<Layer> to) {
-        from->output_nodes.push_back(to);
-        to->input_nodes.push_back(from);
+        from->output_nodes.push_back(to.get());
+        to->input_nodes.push_back(from.get());
     }
 
     // Fluent sequential builder: model << layerA << layerB
@@ -36,22 +36,22 @@ public:
     inline void build_graph() {
         layers.clear();
         std::unordered_map<Layer*, int> in_degree;
-        std::queue<std::shared_ptr<Layer>> q;
+        std::queue<Layer*> q;
 
         for (auto& n : nodes) {
             in_degree[n.get()] = (int)n->input_nodes.size();
-            if (in_degree[n.get()] == 0) q.push(n);
+            if (in_degree[n.get()] == 0) q.push(n.get());
         }
         while (!q.empty()) {
             auto u = q.front(); q.pop();
             layers.push_back(u);
             for (auto& v : u->output_nodes)
-                if (--in_degree[v.get()] == 0) q.push(v);
+                if (--in_degree[v] == 0) q.push(v);
         }
     }
 
     inline void add_residual_link(std::shared_ptr<Layer> parent, std::shared_ptr<Layer> child) {
-        child->add_extra_input_source(parent);
+        child->add_extra_input_source(parent.get());
     }
 
     inline void compile(const std::vector<int>& primary_input_shape) {
