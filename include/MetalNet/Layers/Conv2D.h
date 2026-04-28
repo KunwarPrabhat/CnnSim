@@ -53,15 +53,15 @@ public:
             local_grad_biases.emplace_back(out_channels, 1);
         }
     }
-
-    inline Tensor& forward(const Tensor& input) override {
+inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const float* in_ptr_base = input.data.data();
         const float* w_ptr_base = weights.data.data();
         const float* b_ptr_base = biases.data.data();
         float* out_ptr_base = output_buffer.data.data();
 
-        #pragma omp parallel for collapse(2) schedule(static)
+        // [LATENCY FIX] Bypass OpenMP overhead entirely when Batch Size == 1
+        #pragma omp parallel for collapse(2) schedule(static) if(N_batch > 1)
         for (int n = 0; n < N_batch; ++n) {
             for (int y = 0; y < OH_dim; ++y) {
                 for (int x = 0; x < OW_dim; ++x) {

@@ -36,13 +36,13 @@ public:
         return {&gamma, &beta, &running_mean, &running_var};
     }
 
-    inline Tensor& forward(const Tensor& input) override {
+   inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N=input.shape[0], H=input.shape[1], W=input.shape[2], C=input.shape[3];
         const int HW=H*W, m=N*HW;
         
         const float* inp = input.data.data();
-        float*       out = output_buffer.data.data();
+        float* out = output_buffer.data.data();
         const float* gam = gamma.data.data();
         const float* bet = beta.data.data();
 
@@ -81,16 +81,15 @@ public:
             }
 
             float* xn = x_norm.data.data();
-
             #pragma omp parallel for schedule(static)
             for (int b=0; b<N; ++b) {
                 const float* sv = inp + b*(HW*C);
-                float*       dv = out + b*(HW*C);
-                float*       xv = xn  + b*(HW*C);
+                float* dv = out + b*(HW*C);
+                float* xv = xn  + b*(HW*C);
                 for (int hw=0; hw<HW; ++hw) {
                     const float* s = sv + hw*C;
-                    float*       d = dv + hw*C;
-                    float*       x = xv + hw*C;
+                    float* d = dv + hw*C;
+                    float* x = xv + hw*C;
                     #pragma omp simd
                     for (int c=0; c<C; ++c) {
                         float inv_std = 1.0f/std::sqrt(var[c]+eps);
@@ -102,13 +101,15 @@ public:
         } else {
             const float* rm = running_mean.data.data();
             const float* rv = running_var.data.data();
-            #pragma omp parallel for schedule(static)
+            
+            // [LATENCY FIX] Bypass OpenMP overhead when Batch Size == 1
+            #pragma omp parallel for schedule(static) if(N > 1)
             for (int b=0; b<N; ++b) {
                 const float* sv = inp + b*(HW*C);
-                float*       dv = out + b*(HW*C);
+                float* dv = out + b*(HW*C);
                 for (int hw=0; hw<HW; ++hw) {
                     const float* s = sv + hw*C;
-                    float*       d = dv + hw*C;
+                    float* d = dv + hw*C;
                     #pragma omp simd
                     for (int c=0; c<C; ++c) {
                         float inv_std = 1.0f/std::sqrt(rv[c]+eps);

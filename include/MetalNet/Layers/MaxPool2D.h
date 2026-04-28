@@ -18,17 +18,18 @@ public:
         grad_input_buffer = Tensor(input_shapes[0]);
     }
 
-    inline Tensor& forward(const Tensor& input) override {
+   inline Tensor& forward(const Tensor& input) override {
         cached_input_ptr = &input;
         const int N=input.shape[0],H=input.shape[1],W=input.shape[2],C=input.shape[3];
         const int OH=output_buffer.shape[1], OW=output_buffer.shape[2];
         const float* src = input.data.data();
-        float*       dst = output_buffer.data.data();
-        
-        #pragma omp parallel for schedule(static)
+        float* dst = output_buffer.data.data();
+
+        // [LATENCY FIX] Bypass OpenMP overhead when Batch Size == 1
+        #pragma omp parallel for schedule(static) if(N > 1)
         for (int n=0;n<N;++n) {
             const float* sn = src + n*(H*W*C);
-            float*       dn = dst + n*(OH*OW*C);
+            float* dn = dst + n*(OH*OW*C);
             for (int y=0;y<OH;++y) {
                 for (int x=0;x<OW;++x) {
                     float* dc = dn + (y*OW+x)*C;
@@ -39,7 +40,8 @@ public:
                             const float* sc = sn + ((y*stride+py)*W + (x*stride+px))*C;
                             #pragma omp simd
                             for (int c=0;c<C;++c) {
-                                if (sc[c] > dc[c]) dc[c] = sc[c];
+                                // [AVX2 FIX] Replaced 'if' statement with std::max for proper vectorization
+                                dc[c] = std::max(dc[c], sc[c]);
                             }
                         }
                     }

@@ -47,14 +47,14 @@ public:
         const float* inp = input.data.data();
         const float* W   = weights.data.data();
         const float* b   = biases.data.data();
-        float*       out = output_buffer.data.data();
+        float* out = output_buffer.data.data();
         
         constexpr int BLOCK_SIZE = 64;
-
-        #pragma omp parallel for schedule(static)
+        
+        // [LATENCY FIX] Bypass OpenMP overhead when Batch Size == 1
+        #pragma omp parallel for schedule(static) if(N > 1)
         for (int i0 = 0; i0 < N; i0 += BLOCK_SIZE) {
             int i_max = std::min(i0 + BLOCK_SIZE, N);
-            
             for (int i = i0; i < i_max; ++i) {
                 float* o_row = out + i * M;
                 #ifdef __AVX2__
