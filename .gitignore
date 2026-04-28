@@ -3,7 +3,7 @@ build/
 bin/
 obj/
 # --- Executables ---
-
+*.csv
 *.exe
 *.out
 
