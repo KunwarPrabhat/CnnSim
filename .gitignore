@@ -3,10 +3,9 @@ build/
 bin/
 obj/
 # --- Executables ---
-*.csv
+
 *.exe
 *.out
-
 # --- Phase 5: Neural Network weights ---
 
 *.bin
@@ -36,3 +35,5 @@ test_results.txt
 *.txt
 !README.md
 !CMakeLists.txt
+
+*.csv
