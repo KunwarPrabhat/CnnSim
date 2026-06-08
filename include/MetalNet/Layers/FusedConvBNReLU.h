@@ -1,7 +1,7 @@
 #pragma once
 #include "Layer.h"
+#include "../arch/Simd.h"
 #include <omp.h>
-#include <immintrin.h>
 #include "../core/Im2Col.h"
 
 namespace MetalNet {
@@ -167,18 +167,14 @@ public:
             for (int i0 = 0; i0 < N_cols; i0 += BLOCK_SIZE) {
                 int i_max = std::min(i0 + BLOCK_SIZE, N_cols);
                 
+                constexpr int V = simd::VLEN;
                 for (int i = i0; i < i_max; ++i) {
                     float* o_row = cbuf_n + i * M;
-                    #ifdef __AVX2__
                     int j = 0;
-                    for (; j + 7 < M; j += 8) {
-                        _mm256_storeu_ps(o_row + j, _mm256_loadu_ps(cb + j));
+                    for (; j + V <= M; j += V) {
+                        simd::vstore(o_row + j, simd::vload(cb + j));
                     }
                     for (; j < M; ++j) o_row[j] = cb[j];
-                    #else
-                    #pragma omp simd
-                    for (int j = 0; j < M; ++j) o_row[j] = cb[j];
-                    #endif
                 }
 
                 for (int k0 = 0; k0 < K_dim; k0 += BLOCK_SIZE) {
@@ -191,32 +187,17 @@ public:
                             for (int k = k0; k < k_max; ++k) {
                                 float val = col_row[k];
                                 const float* w_row = W + k * M;
-                                #ifdef __AVX2__
-                                __m256 v_val = _mm256_set1_ps(val);
+                                constexpr int V = simd::VLEN;
+                                simd::vfloat v_val = simd::vset1(val);
                                 int j = j0;
-                                for (; j + 15 < j_max; j += 16) {
-                                    __m256 out_v0 = _mm256_loadu_ps(o_row + j);
-                                    __m256 out_v1 = _mm256_loadu_ps(o_row + j + 8);
-                                    __m256 w_v0 = _mm256_loadu_ps(w_row + j);
-                                    __m256 w_v1 = _mm256_loadu_ps(w_row + j + 8);
-                                    out_v0 = _mm256_fmadd_ps(v_val, w_v0, out_v0);
-                                    out_v1 = _mm256_fmadd_ps(v_val, w_v1, out_v1);
-                                    _mm256_storeu_ps(o_row + j, out_v0);
-                                    _mm256_storeu_ps(o_row + j + 8, out_v1);
+                                for (; j + 2*V <= j_max; j += 2*V) {
+                                    simd::vstore(o_row + j,     simd::vfma(v_val, simd::vload(w_row + j),     simd::vload(o_row + j)));
+                                    simd::vstore(o_row + j + V, simd::vfma(v_val, simd::vload(w_row + j + V), simd::vload(o_row + j + V)));
                                 }
-                                for (; j + 7 < j_max; j += 8) {
-                                    __m256 out_v = _mm256_loadu_ps(o_row + j);
-                                    __m256 w_v = _mm256_loadu_ps(w_row + j);
-                                    out_v = _mm256_fmadd_ps(v_val, w_v, out_v);
-                                    _mm256_storeu_ps(o_row + j, out_v);
+                                for (; j + V <= j_max; j += V) {
+                                    simd::vstore(o_row + j, simd::vfma(v_val, simd::vload(w_row + j), simd::vload(o_row + j)));
                                 }
                                 for (; j < j_max; ++j) o_row[j] += val * w_row[j];
-                                #else
-                                #pragma omp simd
-                                for (int j = j0; j < j_max; ++j) {
-                                    o_row[j] += val * w_row[j];
-                                }
-                                #endif
                             }
                         }
                     }
@@ -406,25 +387,16 @@ public:
                     int j_max = std::min(j0 + BLOCK_SIZE, M);
                     for (int k = k0; k < k_max; ++k) {
                         float* dw_row = local_dW + k * M;
+                        constexpr int V = simd::VLEN;
                         for (int i = 0; i < N_cols; ++i) {
                             float val = col[i * K_dim + k];
                             const float* go_row = go_n + i * M;
-                            #ifdef __AVX2__
-                            __m256 v_val = _mm256_set1_ps(val);
+                            simd::vfloat v_val = simd::vset1(val);
                             int j = j0;
-                            for (; j + 7 < j_max; j += 8) {
-                                __m256 h_v = _mm256_loadu_ps(dw_row + j);
-                                __m256 g_v = _mm256_loadu_ps(go_row + j);
-                                h_v = _mm256_fmadd_ps(v_val, g_v, h_v);
-                                _mm256_storeu_ps(dw_row + j, h_v);
+                            for (; j + V <= j_max; j += V) {
+                                simd::vstore(dw_row + j, simd::vfma(v_val, simd::vload(go_row + j), simd::vload(dw_row + j)));
                             }
                             for (; j < j_max; ++j) dw_row[j] += val * go_row[j];
-                            #else
-                            #pragma omp simd
-                            for (int j = j0; j < j_max; ++j) {
-                                dw_row[j] += val * go_row[j];
-                            }
-                            #endif
                         }
                     }
                 }

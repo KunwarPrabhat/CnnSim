@@ -1,7 +1,7 @@
 #pragma once
 #include "Layer.h"
+#include "../arch/Simd.h"
 #include <omp.h>
-#include <immintrin.h>
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
@@ -68,13 +68,55 @@ inline Tensor& forward(const Tensor& input) override {
                     float* out_pixel = out_ptr_base + ((n * OH_dim + y) * OW_dim + x) * out_channels;
                     
                     // [THROUGHPUT FIX] Strict In-Register Accumulation
+                    constexpr int V = simd::VLEN;
                     int co = 0;
-                    for (; co + 31 < out_channels; co += 32) {
+                    // [ILP FIX] 8 independent accumulator chains to hide FMA latency.
+                    for (; co + 8*V <= out_channels; co += 8*V) {
+                        simd::vfloat a0 = simd::vload(b_ptr_base + co);
+                        simd::vfloat a1 = simd::vload(b_ptr_base + co + V);
+                        simd::vfloat a2 = simd::vload(b_ptr_base + co + 2*V);
+                        simd::vfloat a3 = simd::vload(b_ptr_base + co + 3*V);
+                        simd::vfloat a4 = simd::vload(b_ptr_base + co + 4*V);
+                        simd::vfloat a5 = simd::vload(b_ptr_base + co + 5*V);
+                        simd::vfloat a6 = simd::vload(b_ptr_base + co + 6*V);
+                        simd::vfloat a7 = simd::vload(b_ptr_base + co + 7*V);
+                        for (int ky = 0; ky < kernel_size; ++ky) {
+                            int iy = y * stride - padding + ky;
+                            if (iy < 0 || iy >= H_dim) continue;
+                            for (int kx = 0; kx < kernel_size; ++kx) {
+                                int ix = x * stride - padding + kx;
+                                if (ix < 0 || ix >= W_dim) continue;
+                                const float* in_pixel = in_ptr_base + ((n * H_dim + iy) * W_dim + ix) * in_channels;
+                                const float* w_block = w_ptr_base + ((ky * kernel_size + kx) * in_channels) * out_channels;
+                                for (int ci = 0; ci < in_channels; ++ci) {
+                                    simd::vfloat v_val = simd::vset1(in_pixel[ci]);
+                                    const float* w_row = w_block + ci * out_channels + co;
+                                    a0 = simd::vfma(v_val, simd::vload(w_row),       a0);
+                                    a1 = simd::vfma(v_val, simd::vload(w_row + V),   a1);
+                                    a2 = simd::vfma(v_val, simd::vload(w_row + 2*V), a2);
+                                    a3 = simd::vfma(v_val, simd::vload(w_row + 3*V), a3);
+                                    a4 = simd::vfma(v_val, simd::vload(w_row + 4*V), a4);
+                                    a5 = simd::vfma(v_val, simd::vload(w_row + 5*V), a5);
+                                    a6 = simd::vfma(v_val, simd::vload(w_row + 6*V), a6);
+                                    a7 = simd::vfma(v_val, simd::vload(w_row + 7*V), a7);
+                                }
+                            }
+                        }
+                        simd::vstore(out_pixel + co,       a0);
+                        simd::vstore(out_pixel + co + V,   a1);
+                        simd::vstore(out_pixel + co + 2*V, a2);
+                        simd::vstore(out_pixel + co + 3*V, a3);
+                        simd::vstore(out_pixel + co + 4*V, a4);
+                        simd::vstore(out_pixel + co + 5*V, a5);
+                        simd::vstore(out_pixel + co + 6*V, a6);
+                        simd::vstore(out_pixel + co + 7*V, a7);
+                    }
+                    for (; co + 4*V <= out_channels; co += 4*V) {
                         // 1. Initialize ACCUMULATOR REGISTERS
-                        __m256 acc0 = _mm256_loadu_ps(b_ptr_base + co);
-                        __m256 acc1 = _mm256_loadu_ps(b_ptr_base + co + 8);
-                        __m256 acc2 = _mm256_loadu_ps(b_ptr_base + co + 16);
-                        __m256 acc3 = _mm256_loadu_ps(b_ptr_base + co + 24);
+                        simd::vfloat acc0 = simd::vload(b_ptr_base + co);
+                        simd::vfloat acc1 = simd::vload(b_ptr_base + co + V);
+                        simd::vfloat acc2 = simd::vload(b_ptr_base + co + 2*V);
+                        simd::vfloat acc3 = simd::vload(b_ptr_base + co + 3*V);
 
                         // 2. Pure spatial inner loop
                         for (int ky = 0; ky < kernel_size; ++ky) {
@@ -83,31 +125,31 @@ inline Tensor& forward(const Tensor& input) override {
                             for (int kx = 0; kx < kernel_size; ++kx) {
                                 int ix = x * stride - padding + kx;
                                 if (ix < 0 || ix >= W_dim) continue;
-                                
+
                                 const float* in_pixel = in_ptr_base + ((n * H_dim + iy) * W_dim + ix) * in_channels;
                                 const float* w_block = w_ptr_base + ((ky * kernel_size + kx) * in_channels) * out_channels;
-                                
+
                                 for (int ci = 0; ci < in_channels; ++ci) {
-                                    __m256 v_val = _mm256_set1_ps(in_pixel[ci]);
+                                    simd::vfloat v_val = simd::vset1(in_pixel[ci]);
                                     const float* w_row = w_block + ci * out_channels;
-                                    
+
                                     // 3. Accumulate STRICTLY in registers (NO RAM THRESHING)
-                                    acc0 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + co), acc0);
-                                    acc1 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + co + 8), acc1);
-                                    acc2 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + co + 16), acc2);
-                                    acc3 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + co + 24), acc3);
+                                    acc0 = simd::vfma(v_val, simd::vload(w_row + co), acc0);
+                                    acc1 = simd::vfma(v_val, simd::vload(w_row + co + V), acc1);
+                                    acc2 = simd::vfma(v_val, simd::vload(w_row + co + 2*V), acc2);
+                                    acc3 = simd::vfma(v_val, simd::vload(w_row + co + 3*V), acc3);
                                 }
                             }
                         }
                         // 4. WRITE to memory exactly ONCE
-                        _mm256_storeu_ps(out_pixel + co, acc0);
-                        _mm256_storeu_ps(out_pixel + co + 8, acc1);
-                        _mm256_storeu_ps(out_pixel + co + 16, acc2);
-                        _mm256_storeu_ps(out_pixel + co + 24, acc3);
+                        simd::vstore(out_pixel + co, acc0);
+                        simd::vstore(out_pixel + co + V, acc1);
+                        simd::vstore(out_pixel + co + 2*V, acc2);
+                        simd::vstore(out_pixel + co + 3*V, acc3);
                     }
-                    
-                    for (; co + 7 < out_channels; co += 8) {
-                        __m256 acc0 = _mm256_loadu_ps(b_ptr_base + co);
+
+                    for (; co + V <= out_channels; co += V) {
+                        simd::vfloat acc0 = simd::vload(b_ptr_base + co);
                         for (int ky = 0; ky < kernel_size; ++ky) {
                             int iy = y * stride - padding + ky;
                             if (iy < 0 || iy >= H_dim) continue;
@@ -117,12 +159,12 @@ inline Tensor& forward(const Tensor& input) override {
                                 const float* in_pixel = in_ptr_base + ((n * H_dim + iy) * W_dim + ix) * in_channels;
                                 const float* w_block = w_ptr_base + ((ky * kernel_size + kx) * in_channels) * out_channels;
                                 for (int ci = 0; ci < in_channels; ++ci) {
-                                    __m256 v_val = _mm256_set1_ps(in_pixel[ci]);
-                                    acc0 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_block + ci * out_channels + co), acc0);
+                                    simd::vfloat v_val = simd::vset1(in_pixel[ci]);
+                                    acc0 = simd::vfma(v_val, simd::vload(w_block + ci * out_channels + co), acc0);
                                 }
                             }
                         }
-                        _mm256_storeu_ps(out_pixel + co, acc0);
+                        simd::vstore(out_pixel + co, acc0);
                     }
                     for (; co < out_channels; ++co) {
                         float sum = b_ptr_base[co];
@@ -181,26 +223,23 @@ inline Tensor& forward(const Tensor& input) override {
                             const float* go_pixel = go_ptr_base + ((n * OH_dim + y) * OW_dim + x) * out_channels;
                             const float* w_block = w_ptr_base + ((ky * kernel_size + kx) * in_channels) * out_channels;
                             
+                            constexpr int V = simd::VLEN;
                             for (int ci = 0; ci < in_channels; ++ci) {
                                 const float* w_row = w_block + ci * out_channels;
-                                
-                                __m256 acc_v = _mm256_setzero_ps();
+
+                                simd::vfloat acc_v = simd::vzero();
                                 int co = 0;
-                                for (; co + 31 < out_channels; co += 32) {
-                                    __m256 a0 = _mm256_mul_ps(_mm256_loadu_ps(go_pixel + co), _mm256_loadu_ps(w_row + co));
-                                    __m256 a1 = _mm256_mul_ps(_mm256_loadu_ps(go_pixel + co + 8), _mm256_loadu_ps(w_row + co + 8));
-                                    __m256 a2 = _mm256_mul_ps(_mm256_loadu_ps(go_pixel + co + 16), _mm256_loadu_ps(w_row + co + 16));
-                                    __m256 a3 = _mm256_mul_ps(_mm256_loadu_ps(go_pixel + co + 24), _mm256_loadu_ps(w_row + co + 24));
-                                    acc_v = _mm256_add_ps(acc_v, _mm256_add_ps(_mm256_add_ps(a0, a1), _mm256_add_ps(a2, a3)));
+                                for (; co + 4*V <= out_channels; co += 4*V) {
+                                    acc_v = simd::vfma(simd::vload(go_pixel + co),       simd::vload(w_row + co),       acc_v);
+                                    acc_v = simd::vfma(simd::vload(go_pixel + co + V),   simd::vload(w_row + co + V),   acc_v);
+                                    acc_v = simd::vfma(simd::vload(go_pixel + co + 2*V), simd::vload(w_row + co + 2*V), acc_v);
+                                    acc_v = simd::vfma(simd::vload(go_pixel + co + 3*V), simd::vload(w_row + co + 3*V), acc_v);
                                 }
-                                for (; co + 7 < out_channels; co += 8) {
-                                    acc_v = _mm256_fmadd_ps(_mm256_loadu_ps(go_pixel + co), _mm256_loadu_ps(w_row + co), acc_v);
+                                for (; co + V <= out_channels; co += V) {
+                                    acc_v = simd::vfma(simd::vload(go_pixel + co), simd::vload(w_row + co), acc_v);
                                 }
-                                
-                                alignas(32) float acc_arr[8];
-                                _mm256_store_ps(acc_arr, acc_v);
-                                float sum = acc_arr[0] + acc_arr[1] + acc_arr[2] + acc_arr[3] + acc_arr[4] + acc_arr[5] + acc_arr[6] + acc_arr[7];
-                                
+
+                                float sum = simd::vsum(acc_v);
                                 for (; co < out_channels; ++co) sum += go_pixel[co] * w_row[co];
                                 din_pixel[ci] += sum;
                             }
@@ -230,15 +269,16 @@ inline Tensor& forward(const Tensor& input) override {
                         const float* go_pixel = go_ptr_base + ((n * OH_dim + y) * OW_dim + x) * out_channels;
                         
                         // Bias Accumulation
+                        constexpr int V = simd::VLEN;
                         int co = 0;
-                        for (; co + 31 < out_channels; co += 32) {
-                            _mm256_storeu_ps(local_db + co, _mm256_add_ps(_mm256_loadu_ps(local_db + co), _mm256_loadu_ps(go_pixel + co)));
-                            _mm256_storeu_ps(local_db + co + 8, _mm256_add_ps(_mm256_loadu_ps(local_db + co + 8), _mm256_loadu_ps(go_pixel + co + 8)));
-                            _mm256_storeu_ps(local_db + co + 16, _mm256_add_ps(_mm256_loadu_ps(local_db + co + 16), _mm256_loadu_ps(go_pixel + co + 16)));
-                            _mm256_storeu_ps(local_db + co + 24, _mm256_add_ps(_mm256_loadu_ps(local_db + co + 24), _mm256_loadu_ps(go_pixel + co + 24)));
+                        for (; co + 4*V <= out_channels; co += 4*V) {
+                            simd::vstore(local_db + co,       simd::vadd(simd::vload(local_db + co),       simd::vload(go_pixel + co)));
+                            simd::vstore(local_db + co + V,   simd::vadd(simd::vload(local_db + co + V),   simd::vload(go_pixel + co + V)));
+                            simd::vstore(local_db + co + 2*V, simd::vadd(simd::vload(local_db + co + 2*V), simd::vload(go_pixel + co + 2*V)));
+                            simd::vstore(local_db + co + 3*V, simd::vadd(simd::vload(local_db + co + 3*V), simd::vload(go_pixel + co + 3*V)));
                         }
-                        for (; co + 7 < out_channels; co += 8) {
-                            _mm256_storeu_ps(local_db + co, _mm256_add_ps(_mm256_loadu_ps(local_db + co), _mm256_loadu_ps(go_pixel + co)));
+                        for (; co + V <= out_channels; co += V) {
+                            simd::vstore(local_db + co, simd::vadd(simd::vload(local_db + co), simd::vload(go_pixel + co)));
                         }
                         for (; co < out_channels; ++co) local_db[co] += go_pixel[co];
 
@@ -253,29 +293,30 @@ inline Tensor& forward(const Tensor& input) override {
                                 const float* in_pixel = in_ptr_base + ((n * H_dim + iy) * W_dim + ix) * in_channels;
                                 float* dw_block = local_dw + ((ky * kernel_size + kx) * in_channels) * out_channels;
                                 
+                                constexpr int V = simd::VLEN;
                                 for (int ci = 0; ci < in_channels; ++ci) {
-                                    __m256 v_val = _mm256_set1_ps(in_pixel[ci]);
+                                    simd::vfloat v_val = simd::vset1(in_pixel[ci]);
                                     float* dw_row = dw_block + ci * out_channels;
-                                    
+
                                     int c = 0;
-                                    for (; c + 31 < out_channels; c += 32) {
-                                        __m256 dw0 = _mm256_loadu_ps(dw_row + c);
-                                        __m256 dw1 = _mm256_loadu_ps(dw_row + c + 8);
-                                        __m256 dw2 = _mm256_loadu_ps(dw_row + c + 16);
-                                        __m256 dw3 = _mm256_loadu_ps(dw_row + c + 24);
+                                    for (; c + 4*V <= out_channels; c += 4*V) {
+                                        simd::vfloat dw0 = simd::vload(dw_row + c);
+                                        simd::vfloat dw1 = simd::vload(dw_row + c + V);
+                                        simd::vfloat dw2 = simd::vload(dw_row + c + 2*V);
+                                        simd::vfloat dw3 = simd::vload(dw_row + c + 3*V);
 
-                                        dw0 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(go_pixel + c), dw0);
-                                        dw1 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(go_pixel + c + 8), dw1);
-                                        dw2 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(go_pixel + c + 16), dw2);
-                                        dw3 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(go_pixel + c + 24), dw3);
+                                        dw0 = simd::vfma(v_val, simd::vload(go_pixel + c),       dw0);
+                                        dw1 = simd::vfma(v_val, simd::vload(go_pixel + c + V),   dw1);
+                                        dw2 = simd::vfma(v_val, simd::vload(go_pixel + c + 2*V), dw2);
+                                        dw3 = simd::vfma(v_val, simd::vload(go_pixel + c + 3*V), dw3);
 
-                                        _mm256_storeu_ps(dw_row + c, dw0);
-                                        _mm256_storeu_ps(dw_row + c + 8, dw1);
-                                        _mm256_storeu_ps(dw_row + c + 16, dw2);
-                                        _mm256_storeu_ps(dw_row + c + 24, dw3);
+                                        simd::vstore(dw_row + c,       dw0);
+                                        simd::vstore(dw_row + c + V,   dw1);
+                                        simd::vstore(dw_row + c + 2*V, dw2);
+                                        simd::vstore(dw_row + c + 3*V, dw3);
                                     }
-                                    for (; c + 7 < out_channels; c += 8) {
-                                        _mm256_storeu_ps(dw_row + c, _mm256_fmadd_ps(v_val, _mm256_loadu_ps(go_pixel + c), _mm256_loadu_ps(dw_row + c)));
+                                    for (; c + V <= out_channels; c += V) {
+                                        simd::vstore(dw_row + c, simd::vfma(v_val, simd::vload(go_pixel + c), simd::vload(dw_row + c)));
                                     }
                                     for (; c < out_channels; ++c) dw_row[c] += in_pixel[ci] * go_pixel[c];
                                 }
@@ -311,6 +352,19 @@ inline Tensor& forward(const Tensor& input) override {
 
     inline std::vector<Tensor*> get_parameters() override { return {&weights, &biases}; }
     inline std::string name() const override { return "Conv2D"; }
+
+    // Profiler cost model: 2 flops per MAC, bwd ~= 2x fwd (dInput + dWeights).
+    inline double prof_flops_fwd() const override {
+        double macs = (double)N_batch * OH_dim * OW_dim * out_channels
+                      * in_channels * kernel_size * kernel_size;
+        return 2.0 * macs;
+    }
+    inline double prof_flops_bwd() const override { return 2.0 * prof_flops_fwd(); }
+    inline long long prof_bytes_fwd() const override {
+        long long in  = (long long)N_batch * H_dim  * W_dim  * in_channels;
+        long long out = (long long)N_batch * OH_dim * OW_dim * out_channels;
+        return (in + out + (long long)weights.size()) * 4;
+    }
 };
 
 } // namespace MetalNet

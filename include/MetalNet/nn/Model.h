@@ -8,8 +8,19 @@
 #include "../Layers/Layer.h"
 #include "Optimizer.h"
 #include "Loss.h"
-#include "../Layers/BatchNorm2D.h"     
-#include "../Layers/FusedConvBNReLU.h" 
+#include "../Layers/BatchNorm2D.h"
+#include "../Layers/FusedConvBNReLU.h"
+
+#ifdef METALNET_PROFILE
+  #include "../profiler/Profiler.h"
+  #define MN_PROF_TIC()    auto _mn_t0 = MetalNet::prof::clk::now()
+  #define MN_PROF_FWD(i,l) MetalNet::prof::Profiler::get().record_fwd((int)(i), (l), _mn_t0)
+  #define MN_PROF_BWD(i,l) MetalNet::prof::Profiler::get().record_bwd((int)(i), (l), _mn_t0)
+#else
+  #define MN_PROF_TIC()
+  #define MN_PROF_FWD(i,l)
+  #define MN_PROF_BWD(i,l)
+#endif
 
 namespace MetalNet {
 
@@ -17,6 +28,12 @@ class Model {
 public:
     std::vector<std::shared_ptr<Layer>> nodes;
     std::vector<Layer*> layers;
+
+    // [RAM FIX] Shared scratch for per-layer grad_input. Each layer's dInput is
+    // a pure transient (computed, added to its parent, then discarded), so all
+    // layers borrow this single max-sized buffer during backward instead of
+    // keeping N full-size grad_input buffers resident simultaneously.
+    std::vector<float, NoInitAllocator<float>> gi_pool;
 
     inline void add_node(std::shared_ptr<Layer> n) {
         nodes.push_back(n);
@@ -77,12 +94,21 @@ public:
             }
             layer->grad_output_buffer = Tensor(layer->output_buffer.shape);
         }
+        // Size the shared grad_input scratch to the largest layer input.
+        size_t max_gi = 0;
+        for (auto* l : layers) {
+            size_t s = l->grad_input_buffer.shape.empty() ? 0 : 1;
+            for (int d : l->grad_input_buffer.shape) s *= (size_t)d;
+            max_gi = std::max(max_gi, s);
+        }
+        if (gi_pool.size() < max_gi) gi_pool.resize(max_gi);
     }
 
     inline Tensor& forward(const Tensor& input) {
-        if (layers.empty()) build_graph(); 
-        
-        for (auto& layer : layers) {
+        if (layers.empty()) build_graph();
+
+        for (size_t _i = 0; _i < layers.size(); ++_i) {
+            auto* layer = layers[_i];
             std::vector<const Tensor*> ins;
             if (layer->input_nodes.empty()) {
                 ins.push_back(&input);
@@ -112,8 +138,10 @@ public:
                 }
                 ins[0] = &comb;
             }
-            
+
+            MN_PROF_TIC();
             layer->forward(ins);
+            MN_PROF_FWD(_i, layer);
         }
         return layers.back()->output_buffer;
     }
@@ -135,8 +163,15 @@ public:
 
         for (int i = (int)layers.size() - 1; i >= 0; --i) {
             auto& layer  = layers[i];
-            
+
+            // Borrow the shared scratch for this layer's grad_input (O(1) swap).
+            // Only this single buffer is ever written, so resident grad_input
+            // memory is one max-sized buffer instead of the sum over all layers.
+            std::swap(layer->grad_input_buffer.data, gi_pool);
+
+            MN_PROF_TIC();
             layer->backward_multi(layer->grad_output_buffer);
+            MN_PROF_BWD(i, layer);
 
             for (size_t j = 0; j < layer->input_nodes.size(); ++j) {
                 auto& parent = layer->input_nodes[j];
@@ -159,6 +194,9 @@ public:
                 #pragma omp simd
                 for (int k = 0; k < psz; ++k) pdst[k] += psrc[k];
             }
+
+            // Return the scratch for the next layer to reuse.
+            std::swap(layer->grad_input_buffer.data, gi_pool);
         }
     }
 
@@ -182,7 +220,7 @@ public:
         }
     }
 
-    inline void train() { 
+    inline void train() {
         for (auto& n : nodes) n->train(); 
         for (auto& l : layers) {
             l->train();

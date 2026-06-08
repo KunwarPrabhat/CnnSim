@@ -9,8 +9,6 @@
 #include <vector>
 #include <numeric>
 #include <omp.h>
-#include <xmmintrin.h>
-#include <pmmintrin.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -21,7 +19,16 @@ double get_peak_ram_mb() {
     return (double)pmc.PeakWorkingSetSize / (1024.0 * 1024.0);
 }
 #else
-double get_peak_ram_mb() { return 0.0; } 
+#include <sys/resource.h>
+double get_peak_ram_mb() {
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+#if defined(__APPLE__)
+    return (double)ru.ru_maxrss / (1024.0 * 1024.0); // bytes on macOS
+#else
+    return (double)ru.ru_maxrss / 1024.0;            // kilobytes on Linux
+#endif
+}
 #endif
 
 using namespace MetalNet;
@@ -39,8 +46,7 @@ Model build_vgg_cifar() {
 }
 
 int main() {
-    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+    MetalNet::simd::enable_ftz();
 
     std::cout << "====================================================\n";
     std::cout << "  METALNET v1.0 - ULTIMATE ENGINE BENCHMARK\n";

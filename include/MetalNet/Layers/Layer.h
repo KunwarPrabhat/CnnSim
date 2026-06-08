@@ -58,6 +58,12 @@ public:
     virtual std::vector<Tensor*> get_parameters() { return {}; }
     virtual std::vector<Tensor*> get_states()     { return get_parameters(); }
     virtual std::string name() const = 0;
+
+    // --- Profiler cost model (overridden by compute-heavy layers) ---
+    // Default: elementwise-ish, ~1 flop per output element.
+    virtual double    prof_flops_fwd() const { return (double)output_buffer.size(); }
+    virtual double    prof_flops_bwd() const { return 2.0 * (double)output_buffer.size(); }
+    virtual long long prof_bytes_fwd() const { return (long long)output_buffer.size() * 4; }
 };
 
 } // namespace MetalNet

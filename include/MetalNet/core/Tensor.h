@@ -10,17 +10,59 @@
 #include <utility>
 #include <vector>
 #include <memory>
+#include <new>
+
+#if !defined(_WIN32)
+  #include <sys/mman.h>
+#endif
 
 namespace MetalNet {
 
-// [INIT FIX] Custom allocator that bypasses zero-initialization.
-// This leaves RAM uninitialized, dropping allocation time from 200ms to ~1ms.
+// [INIT FIX] Custom allocator that bypasses zero-initialization (leaves RAM
+// uninitialized, dropping allocation time from ~200ms to ~1ms).
+//
+// [RAM FIX] Large buffers are allocated with mmap and released with munmap.
+// macOS libmalloc (and many allocators) cache freed large blocks instead of
+// returning them to the OS, so peak RSS ratchets upward as the graph is
+// recompiled for different batch sizes. mmap/munmap returns pages immediately,
+// capping peak working set at the true live footprint. Small buffers stay on
+// the normal heap to avoid per-allocation page overhead.
 template <typename T>
 struct NoInitAllocator : std::allocator<T> {
+    using value_type = T;
+    static constexpr std::size_t MMAP_THRESHOLD = 128 * 1024; // bytes
+
+    NoInitAllocator() = default;
+    template <typename U>
+    NoInitAllocator(const NoInitAllocator<U>&) noexcept {}
+
+    T* allocate(std::size_t n) {
+        if (n == 0) return nullptr;
+        std::size_t bytes = n * sizeof(T);
+#if !defined(_WIN32)
+        if (bytes >= MMAP_THRESHOLD) {
+            void* p = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANON, -1, 0);
+            if (p == MAP_FAILED) throw std::bad_alloc();
+            return static_cast<T*>(p);
+        }
+#endif
+        return static_cast<T*>(::operator new(bytes));
+    }
+
+    void deallocate(T* p, std::size_t n) noexcept {
+        if (!p) return;
+        std::size_t bytes = n * sizeof(T);
+#if !defined(_WIN32)
+        if (bytes >= MMAP_THRESHOLD) { ::munmap(p, bytes); return; }
+#endif
+        ::operator delete(p);
+    }
+
     template <typename U, typename... Args>
     void construct(U* p, Args&&... args) {
         if constexpr (sizeof...(Args) == 0) {
-            // Do nothing! 
+            // Do nothing! Skip zero-initialization.
         } else {
             ::new(static_cast<void*>(p)) U(std::forward<Args>(args)...);
         }

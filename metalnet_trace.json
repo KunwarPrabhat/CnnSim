@@ -1,0 +1,5 @@
+{"traceEvents":[
+{"name":"process_name","ph":"M","pid":1,"tid":0,"args":{"name":"MetalNet"}},
+{"name":"thread_name","ph":"M","pid":1,"tid":0,"args":{"name":"forward"}},
+{"name":"thread_name","ph":"M","pid":1,"tid":1,"args":{"name":"backward"}}
+]}

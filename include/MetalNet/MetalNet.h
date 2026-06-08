@@ -1,5 +1,8 @@
 #pragma once
 
+// Architecture SIMD backend (AVX2 / NEON)
+#include "arch/Simd.h"
+
 // Core Mathematical Structures
 #include "core/Tensor.h"
 #include "core/Im2Col.h"

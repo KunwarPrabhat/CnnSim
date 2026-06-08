@@ -1,8 +1,8 @@
 #pragma once
 #include "Layer.h"
+#include "../arch/Simd.h"
 #include <span>
 #include <omp.h>
-#include <immintrin.h>
 
 namespace MetalNet {
 
@@ -52,20 +52,16 @@ inline Tensor& forward(const Tensor& input) override {
         
         // [SCALING FIX] Parallelize directly over N. 
         // For Batch 16, exactly 16 threads will wake up and process 1 image each!
+        constexpr int V = simd::VLEN;
         #pragma omp parallel for schedule(static) if(N > 1)
         for (int i = 0; i < N; ++i) {
             float* o_row = out + i * M;
-            
-            #ifdef __AVX2__
+
             int j = 0;
-            for (; j + 7 < M; j += 8) {
-                _mm256_storeu_ps(o_row + j, _mm256_loadu_ps(b + j));
+            for (; j + V <= M; j += V) {
+                simd::vstore(o_row + j, simd::vload(b + j));
             }
             for (; j < M; ++j) o_row[j] = b[j];
-            #else
-            #pragma omp simd
-            for (int j = 0; j < M; ++j) o_row[j] = b[j];
-            #endif
 
             const float* i_row = inp + i * K;
             // Keep blocking for Cache Locality, but inside the thread!
@@ -76,30 +72,17 @@ inline Tensor& forward(const Tensor& input) override {
                     for (int k = k0; k < k_max; ++k) {
                         float val = i_row[k];
                         const float* w_row = W + k * M;
-                        
-                        #ifdef __AVX2__
-                        __m256 v_val = _mm256_set1_ps(val);
+
+                        simd::vfloat v_val = simd::vset1(val);
                         int jj = j0;
-                        for (; jj + 15 < j_max; jj += 16) {
-                            __m256 out_v0 = _mm256_loadu_ps(o_row + jj);
-                            __m256 out_v1 = _mm256_loadu_ps(o_row + jj + 8);
-                            out_v0 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + jj), out_v0);
-                            out_v1 = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + jj + 8), out_v1);
-                            _mm256_storeu_ps(o_row + jj, out_v0);
-                            _mm256_storeu_ps(o_row + jj + 8, out_v1);
+                        for (; jj + 2*V <= j_max; jj += 2*V) {
+                            simd::vstore(o_row + jj,     simd::vfma(v_val, simd::vload(w_row + jj),     simd::vload(o_row + jj)));
+                            simd::vstore(o_row + jj + V, simd::vfma(v_val, simd::vload(w_row + jj + V), simd::vload(o_row + jj + V)));
                         }
-                        for (; jj + 7 < j_max; jj += 8) {
-                            __m256 out_v = _mm256_loadu_ps(o_row + jj);
-                            out_v = _mm256_fmadd_ps(v_val, _mm256_loadu_ps(w_row + jj), out_v);
-                            _mm256_storeu_ps(o_row + jj, out_v);
+                        for (; jj + V <= j_max; jj += V) {
+                            simd::vstore(o_row + jj, simd::vfma(v_val, simd::vload(w_row + jj), simd::vload(o_row + jj)));
                         }
                         for (; jj < j_max; ++jj) o_row[jj] += val * w_row[jj];
-                        #else
-                        #pragma omp simd
-                        for (int jj = j0; jj < j_max; ++jj) {
-                            o_row[jj] += val * w_row[jj];
-                        }
-                        #endif
                     }
                 }
             }
@@ -145,43 +128,22 @@ inline Tensor& forward(const Tensor& input) override {
                         for (int k = k0; k < k_max; ++k) {
                             const float* w_row = W + k * M;
                             float acc = 0.0f;
-                            #ifdef __AVX2__
-                            __m256 v_acc = _mm256_setzero_ps();
+                            constexpr int V = simd::VLEN;
+                            simd::vfloat v_acc = simd::vzero();
                             int j = j0;
-                            for (; j + 31 < j_max; j += 32) {
-                                __m256 go0 = _mm256_loadu_ps(go_row + j);
-                                __m256 w0 = _mm256_loadu_ps(w_row + j);
-                                v_acc = _mm256_fmadd_ps(go0, w0, v_acc);
-                                
-                                __m256 go1 = _mm256_loadu_ps(go_row + j + 8);
-                                __m256 w1 = _mm256_loadu_ps(w_row + j + 8);
-                                v_acc = _mm256_fmadd_ps(go1, w1, v_acc);
-                                
-                                __m256 go2 = _mm256_loadu_ps(go_row + j + 16);
-                                __m256 w2 = _mm256_loadu_ps(w_row + j + 16);
-                                v_acc = _mm256_fmadd_ps(go2, w2, v_acc);
-                                
-                                __m256 go3 = _mm256_loadu_ps(go_row + j + 24);
-                                __m256 w3 = _mm256_loadu_ps(w_row + j + 24);
-                                v_acc = _mm256_fmadd_ps(go3, w3, v_acc);
+                            for (; j + 4*V <= j_max; j += 4*V) {
+                                v_acc = simd::vfma(simd::vload(go_row + j),       simd::vload(w_row + j),       v_acc);
+                                v_acc = simd::vfma(simd::vload(go_row + j + V),   simd::vload(w_row + j + V),   v_acc);
+                                v_acc = simd::vfma(simd::vload(go_row + j + 2*V), simd::vload(w_row + j + 2*V), v_acc);
+                                v_acc = simd::vfma(simd::vload(go_row + j + 3*V), simd::vload(w_row + j + 3*V), v_acc);
                             }
-                            for (; j + 7 < j_max; j += 8) {
-                                __m256 go0 = _mm256_loadu_ps(go_row + j);
-                                __m256 w0 = _mm256_loadu_ps(w_row + j);
-                                v_acc = _mm256_fmadd_ps(go0, w0, v_acc);
+                            for (; j + V <= j_max; j += V) {
+                                v_acc = simd::vfma(simd::vload(go_row + j), simd::vload(w_row + j), v_acc);
                             }
-                            alignas(32) float acc_arr[8];
-                            _mm256_store_ps(acc_arr, v_acc);
-                            for (int a = 0; a < 8; ++a) acc += acc_arr[a];
+                            acc += simd::vsum(v_acc);
                             for (; j < j_max; ++j) {
                                 acc += go_row[j] * w_row[j];
                             }
-                            #else
-                            #pragma omp simd reduction(+:acc)
-                            for (int j = j0; j < j_max; ++j) {
-                                acc += go_row[j] * w_row[j];
-                            }
-                            #endif
                             di_row[k] += acc;
                         }
                     }
@@ -194,51 +156,33 @@ inline Tensor& forward(const Tensor& input) override {
                     int j_max = std::min(j0 + BLOCK_SIZE, M);
                     for (int k = k0; k < k_max; ++k) {
                         float* dw_row = local_dW + k * M;
+                        constexpr int V = simd::VLEN;
                         for (int i = i0; i < i_max; ++i) {
                             float val = inp[i * K + k]; // inp^T
                             const float* go_row = go + i * M;
-                            #ifdef __AVX2__
-                            __m256 v_val = _mm256_set1_ps(val);
+                            simd::vfloat v_val = simd::vset1(val);
                             int j = j0;
-                            for (; j + 7 < j_max; j += 8) {
-                                __m256 h_v = _mm256_loadu_ps(dw_row + j);
-                                __m256 g_v = _mm256_loadu_ps(go_row + j);
-                                h_v = _mm256_fmadd_ps(v_val, g_v, h_v);
-                                _mm256_storeu_ps(dw_row + j, h_v);
+                            for (; j + V <= j_max; j += V) {
+                                simd::vstore(dw_row + j, simd::vfma(v_val, simd::vload(go_row + j), simd::vload(dw_row + j)));
                             }
                             for (; j < j_max; ++j) {
                                 dw_row[j] += val * go_row[j];
                             }
-                            #else
-                            #pragma omp simd
-                            for (int j = j0; j < j_max; ++j) {
-                                dw_row[j] += val * go_row[j];
-                            }
-                            #endif
                         }
                     }
                 }
             }
 
+            constexpr int V = simd::VLEN;
             for (int i = i0; i < i_max; ++i) {
                 const float* go_row = go + i * M;
-                #ifdef __AVX2__
                 int j = 0;
-                for (; j + 7 < M; j += 8) {
-                    __m256 db_v = _mm256_loadu_ps(local_db + j);
-                    __m256 go_v = _mm256_loadu_ps(go_row + j);
-                    db_v = _mm256_add_ps(db_v, go_v);
-                    _mm256_storeu_ps(local_db + j, db_v);
+                for (; j + V <= M; j += V) {
+                    simd::vstore(local_db + j, simd::vadd(simd::vload(local_db + j), simd::vload(go_row + j)));
                 }
                 for (; j < M; ++j) {
                     local_db[j] += go_row[j];
                 }
-                #else
-                #pragma omp simd
-                for (int j = 0; j < M; ++j) {
-                    local_db[j] += go_row[j];
-                }
-                #endif
             }
         }
 
@@ -264,6 +208,17 @@ inline Tensor& forward(const Tensor& input) override {
 
     inline std::vector<Tensor*> get_parameters() override { return {&weights, &biases}; }
     inline std::string name() const override { return "Dense"; }
+
+    // Profiler cost model: GEMM is N*K*M MACs, bwd ~= 2x fwd (dInput + dWeights).
+    inline double prof_flops_fwd() const override {
+        double N = output_buffer.shape.empty() ? 0.0 : (double)output_buffer.shape[0];
+        return 2.0 * N * (double)input_size * (double)output_size;
+    }
+    inline double prof_flops_bwd() const override { return 2.0 * prof_flops_fwd(); }
+    inline long long prof_bytes_fwd() const override {
+        long long N = output_buffer.shape.empty() ? 0 : (long long)output_buffer.shape[0];
+        return (N * input_size + N * output_size + (long long)weights.size()) * 4;
+    }
 };
 
 } // namespace MetalNet

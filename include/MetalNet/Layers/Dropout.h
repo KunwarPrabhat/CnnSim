@@ -26,7 +26,7 @@ public:
         const float sc=1.0f/(1.0f-rate);
         float* m=mask.data.data(); float* o=output_buffer.data.data(); const float* s=input.data.data();
         for (int i=0;i<input.size();++i) {
-            float r=(float)rand()/RAND_MAX;
+            float r=(float)rand()/(float)RAND_MAX;
             m[i]=r>rate?1.0f:0.0f; o[i]=m[i]*s[i]*sc;
         }
         return output_buffer;
