@@ -42,8 +42,8 @@ static inline bool finite_f(float v){ return v==v && v<1e30f && v>-1e30f; }
 //  Shared state
 // =====================================================================
 enum TestId { T_TRAIN=0, T_INFER, T_COUNT };
-enum View { V_DASH=0, V_TRAIN, V_INFER, V_LOG, V_NTABS };
-static const char* kTab[V_NTABS]={ "Dashboard","Training","Inference Stream","Log" };
+enum View { V_DASH=0, V_TRAIN, V_INFER, V_FILTERS, V_LOG, V_NTABS };
+static const char* kTab[V_NTABS]={ "Dashboard","Training","Inference Stream","Filters","Log" };
 static const char* kTest[T_COUNT]={ "Live Training","Live Inference" };
 
 static constexpr int JOB_NONE=-1, HEATW=200;
@@ -55,6 +55,7 @@ static std::atomic<float> g_progress{0.0f};
 
 static std::atomic<int>   g_p_batch{64}, g_p_threads{0}, g_p_steps{3000};
 static std::atomic<float> g_p_lr{0.0015f}, g_p_wd{0.008f};
+static std::atomic<int>   g_filt_layer{0};   // which conv layer to visualize
 
 static std::atomic<double> g_m_loss{0},g_m_thr{0},g_m_step{0},g_m_gflops{0},g_m_ram{0};
 static std::atomic<double> g_m_acc{0},g_m_vloss{0},g_m_vacc{0};
@@ -69,6 +70,8 @@ struct GuiState {
     double train_step_ms=0,train_imgs=0,final_loss=0,final_acc=0,final_vloss=0,final_vacc=0;
     std::vector<P::LayerStat> layers;
     std::vector<float> heat; int heatL=0; std::vector<std::string> heat_names;
+    std::vector<float> filt, filt0; int filt_k=0,filt_in=0,filt_out=0; int nconv=0;  // selected conv: current + initial weights
+    std::vector<float> fmap; int fmap_oc=0,fmap_h=0,fmap_w=0;                          // live feature maps (activations)
     bool done[T_COUNT]={false,false};
     double peak_ram=0;
     std::vector<std::string> log;
@@ -123,6 +126,11 @@ static void run_train(Model& m){
       S.live_x.clear();S.live_thr.clear(); S.heat.clear(); S.heatL=0; S.heat_names.clear(); }
 
     auto& prof=P::Profiler::get();
+    // gather conv layers + snapshot their INITIAL weights (the "before") at train start
+    std::vector<Conv2D*> convs; for(auto* l:m.layers) if(auto c=dynamic_cast<Conv2D*>(l)) convs.push_back(c);
+    std::vector<std::vector<float>> init_w(convs.size());
+    for(size_t i=0;i<convs.size();++i) init_w[i].assign(convs[i]->weights.data.begin(),convs[i]->weights.data.end());
+    { std::lock_guard<std::mutex> lk(S.mtx); S.nconv=(int)convs.size(); }
     int cursor=NTRAIN; double tot=0; int cnt=0; double le=0,ae=0; bool first=true; double vle=0,vae=0; bool vfirst=true;
     const int VAL_EVERY=40, VAL_BATCHES=3;
 
@@ -172,12 +180,22 @@ static void run_train(Model& m){
         { std::lock_guard<std::mutex> lk(S.mtx);
           roll(S.loss_x,(float)(s+1)); roll(S.loss_y,(float)le); roll(S.ta_y,(float)ae);
           roll(S.live_x,(float)(s+1)); roll(S.live_thr,(float)thr);
-          S.final_loss=le; S.final_acc=ae; S.train_step_ms=tot/cnt; S.train_imgs=B/((tot/cnt)/1000.0); S.layers=prof.layers; }
+          S.final_loss=le; S.final_acc=ae; S.train_step_ms=tot/cnt; S.train_imgs=B/((tot/cnt)/1000.0); S.layers=prof.layers;
+          if(!convs.empty()){
+            int sel=std::clamp(g_filt_layer.load(),0,(int)convs.size()-1); Conv2D* c=convs[sel];
+            S.filt.assign(c->weights.data.begin(),c->weights.data.end()); S.filt0=init_w[sel];
+            S.filt_k=c->kernel_size; S.filt_in=c->in_channels; S.filt_out=c->out_channels;
+            const Tensor& o=c->output_buffer;     // activations -> feature maps (sample 0)
+            if(o.shape.size()==4){ int OH=o.shape[1],OW=o.shape[2],OC=o.shape[3]; S.fmap_oc=OC;S.fmap_h=OH;S.fmap_w=OW;
+              S.fmap.resize((size_t)OC*OH*OW); const float* od=o.data.data();
+              for(int co=0;co<OC;++co)for(int yy=0;yy<OH;++yy)for(int xx=0;xx<OW;++xx) S.fmap[((size_t)co*OH+yy)*OW+xx]=od[((size_t)(yy*OW+xx))*OC+co]; }
+          } }
         if(s%VAL_EVERY==0) validate(s);
         g_progress=(float)(s+1)/STEPS;
     }
-    std::lock_guard<std::mutex> lk(S.mtx); S.done[T_TRAIN]=true; S.peak_ram=P::peak_ram_mb();
-    std::snprintf(bf,sizeof(bf),"[Training] done  train %.3f/%.0f%%  val %.3f/%.0f%%",S.final_loss,S.final_acc*100,S.final_vloss,S.final_vacc*100); slog(bf);
+    { std::lock_guard<std::mutex> lk(S.mtx); S.done[T_TRAIN]=true; S.peak_ram=P::peak_ram_mb();
+      std::snprintf(bf,sizeof(bf),"[Training] done  train %.3f/%.0f%%  val %.3f/%.0f%%",S.final_loss,S.final_acc*100,S.final_vloss,S.final_vacc*100); }
+    slog(bf);   // NB: slog() locks S.mtx - must be OUTSIDE the lock above (non-recursive mutex)
 }
 
 // Continuous forward-pass stress test: streams instantaneous latency + throughput.
@@ -198,8 +216,8 @@ static void run_infer(Model& m){
         std::lock_guard<std::mutex> lk(S.mtx); roll(S.inf_x,(float)n); roll(S.inf_lat,(float)lat); roll(S.inf_thr,(float)thr);
     }
     omp_set_num_threads(omp_get_max_threads());
-    std::lock_guard<std::mutex> lk(S.mtx); S.done[T_INFER]=true;
-    slog("[Inference] stopped");
+    { std::lock_guard<std::mutex> lk(S.mtx); S.done[T_INFER]=true; }
+    slog("[Inference] stopped");   // outside the lock (slog locks S.mtx)
 }
 
 static void worker_main(){
@@ -279,6 +297,8 @@ struct Snap {
     std::vector<float> loss_x,loss_y,ta_y,vx,vloss,vacc,live_x,live_thr,inf_x,inf_lat,inf_thr;
     double train_step_ms,train_imgs,final_loss,peak_ram,final_acc,final_vloss,final_vacc;
     std::vector<P::LayerStat> layers; std::vector<float> heat; int heatL; std::vector<std::string> heat_names;
+    std::vector<float> filt,filt0; int filt_k,filt_in,filt_out,nconv;
+    std::vector<float> fmap; int fmap_oc,fmap_h,fmap_w;
     bool done[T_COUNT]; std::vector<std::string> log;
 };
 static Snap snap(int view){
@@ -289,6 +309,10 @@ static Snap snap(int view){
     d.final_acc=S.final_acc;d.final_vloss=S.final_vloss;d.final_vacc=S.final_vacc;
     for(int i=0;i<T_COUNT;++i) d.done[i]=S.done[i];
     if(view==V_DASH){ d.layers=S.layers; d.heat=S.heat; d.heatL=S.heatL; d.heat_names=S.heat_names; } else d.heatL=0;
+    d.nconv=S.nconv;
+    if(view==V_FILTERS){ d.filt=S.filt; d.filt0=S.filt0; d.filt_k=S.filt_k; d.filt_in=S.filt_in; d.filt_out=S.filt_out;
+        d.fmap=S.fmap; d.fmap_oc=S.fmap_oc; d.fmap_h=S.fmap_h; d.fmap_w=S.fmap_w; }
+    else { d.filt_k=d.filt_in=d.filt_out=0; d.fmap_oc=0; }
     if(view==V_LOG) d.log=S.log;
     return d;
 }
@@ -362,6 +386,56 @@ static void view_infer(const Snap& d){
     ImGui::BeginChild("ia",ImVec2(0,hh),false); ticker("Latency (ms / forward)",d.inf_x,d.inf_lat,BWD(),0.16f,-1,200); ImGui::EndChild();
     ImGui::BeginChild("ib",ImVec2(0,0),false);  ticker("Throughput (img/s)",d.inf_x,d.inf_thr,FWD(),0.16f,-1,200); ImGui::EndChild();
     if(d.inf_x.empty() && g_running.load()!=T_INFER) ImGui::TextDisabled("press \"Live Inference\" on the left to start the stream");
+}
+static void draw_filters(const std::vector<float>& filt,int k,int in,int out,float FS,bool labels){
+    if(filt.empty()||out<=0||k<=0){ ImGui::TextDisabled("(empty)"); ImGui::Dummy(ImVec2(0,FS)); return; }
+    float mx=1e-6f; for(float v:filt) mx=std::max(mx,std::fabs(v));
+    auto Wt=[&](int ky,int kx,int ci,int f){ return filt[(size_t)((ky*k+kx)*in+ci)*out+f]; };
+    const int COLS=8; const float GAP=18.f; float cell=FS/k; int rows=(out+COLS-1)/COLS;
+    ImDrawList* dl=ImGui::GetWindowDrawList(); ImVec2 org=ImGui::GetCursorScreenPos(); ImU32 brd=ImGui::ColorConvertFloat4ToU32(MUTE());
+    float rowh=FS+GAP+(labels?16.f:6.f);
+    for(int f=0;f<out;++f){ int cc=f%COLS,rr=f/COLS; float fx=org.x+cc*(FS+GAP),fy=org.y+rr*rowh;
+        for(int ky=0;ky<k;++ky)for(int kx=0;kx<k;++kx){ float r,g,b;
+            if(in==3){ r=std::clamp(0.5f+0.5f*Wt(ky,kx,0,f)/mx,0.f,1.f); g=std::clamp(0.5f+0.5f*Wt(ky,kx,1,f)/mx,0.f,1.f); b=std::clamp(0.5f+0.5f*Wt(ky,kx,2,f)/mx,0.f,1.f); }
+            else { float s=0; for(int ci=0;ci<in;++ci){ float w=Wt(ky,kx,ci,f); s+=w*w; } float gm=std::clamp(std::sqrt(s)/mx,0.f,1.f); r=g=b=gm; }
+            float cx=fx+kx*cell,cy=fy+ky*cell; dl->AddRectFilled(ImVec2(cx,cy),ImVec2(cx+cell+1,cy+cell+1),ImGui::ColorConvertFloat4ToU32(ImVec4(r,g,b,1))); }
+        dl->AddRect(ImVec2(fx,fy),ImVec2(fx+FS,fy+FS),brd,3.f);
+        if(labels){ char l[12]; std::snprintf(l,sizeof(l),"#%d",f); dl->AddText(ImVec2(fx+2,fy+FS+1),brd,l); }
+    }
+    ImGui::Dummy(ImVec2(0,(float)rows*rowh+6));
+}
+static void draw_fmaps(const std::vector<float>& fm,int oc,int oh,int ow,float TS){
+    if(fm.empty()||oc<=0){ ImGui::TextDisabled("(empty)"); ImGui::Dummy(ImVec2(0,TS)); return; }
+    float lo=1e30f,hi=-1e30f; for(float v:fm){ lo=std::min(lo,v); hi=std::max(hi,v); } float rng=hi-lo; if(rng<1e-6f) rng=1;
+    const int COLS=8; const float GAP=12.f; float cx=TS/ow, cy=TS/oh; int rows=(oc+COLS-1)/COLS;
+    ImDrawList* dl=ImGui::GetWindowDrawList(); ImVec2 org=ImGui::GetCursorScreenPos(); ImU32 brd=ImGui::ColorConvertFloat4ToU32(MUTE());
+    for(int co=0;co<oc;++co){ int cc=co%COLS,rr=co/COLS; float fx=org.x+cc*(TS+GAP),fy=org.y+rr*(TS+GAP);
+        for(int y=0;y<oh;++y)for(int x=0;x<ow;++x){ float t=(fm[((size_t)co*oh+y)*ow+x]-lo)/rng;
+            ImVec4 c=ImPlot::SampleColormap(std::clamp(t,0.f,1.f),ImPlotColormap_Plasma);
+            float px=fx+x*cx,py=fy+y*cy; dl->AddRectFilled(ImVec2(px,py),ImVec2(px+cx+1,py+cy+1),ImGui::ColorConvertFloat4ToU32(c)); }
+        dl->AddRect(ImVec2(fx,fy),ImVec2(fx+TS,fy+TS),brd,3.f); }
+    ImGui::Dummy(ImVec2(0,(float)rows*(TS+GAP)+6));
+}
+static void view_filters(const Snap& d){
+    big("Conv Filters & Feature Maps",ACC(),1.9f);
+    ImGui::TextColored(MUTE(),"Layer 0 has 3 input channels -> kernels show as RGB. Deeper layers (many channels) show as grayscale magnitude.");
+    ImGui::Dummy(ImVec2(0,6));
+    if(d.nconv>1){ int sel=g_filt_layer.load(); ImGui::SetNextItemWidth(200);
+        if(ImGui::SliderInt("conv layer",&sel,0,d.nconv-1)) g_filt_layer=sel; }
+    ImGui::Dummy(ImVec2(0,4));
+    if(d.filt.empty()||d.filt_out<=0){ ImGui::TextDisabled("start Live Training to populate"); return; }
+    int k=d.filt_k,in=d.filt_in,out=d.filt_out;
+
+    big("Live  (training now)",GOOD(),1.15f);
+    ImGui::TextColored(MUTE(),"%d filters - %dx%d kernel - %d input channel(s)",out,k,k,in);
+    draw_filters(d.filt,k,in,out,96.f,true);
+    ImGui::Separator();
+    big("Before  (initial random weights)",BWD(),1.15f);
+    draw_filters(d.filt0,k,in,out,96.f,false);
+    ImGui::Separator();
+    big("Live Feature Maps  (activations on a sample image)",FWD(),1.15f);
+    ImGui::TextColored(MUTE(),"what each filter \"sees\" - %d maps of %dx%d, updating every step",d.fmap_oc,d.fmap_h,d.fmap_w);
+    draw_fmaps(d.fmap,d.fmap_oc,d.fmap_h,d.fmap_w,72.f);
 }
 static void view_log(const Snap& d){ big("Log",ACC()); ImGui::Dummy(ImVec2(0,6)); ImGui::BeginChild("lc",ImVec2(0,0),true);
     for(auto& l:d.log) ImGui::TextWrapped("%s",l.c_str()); if(!d.log.empty()) ImGui::SetScrollHereY(1.0f); ImGui::EndChild(); }
@@ -458,7 +532,7 @@ int main(){
         ImGui::BeginChild("side",ImVec2(312,0),true); sidebar(d); ImGui::EndChild(); ImGui::SameLine();
         ImGui::BeginChild("content",ImVec2(0,0),true); tabs();
         ImGui::BeginChild("va",ImVec2(0,0),false);
-        switch(view){ case V_DASH:view_dash(d);break; case V_TRAIN:view_train(d);break; case V_INFER:view_infer(d);break; case V_LOG:view_log(d);break; default:view_dash(d);break; }
+        switch(view){ case V_DASH:view_dash(d);break; case V_TRAIN:view_train(d);break; case V_INFER:view_infer(d);break; case V_FILTERS:view_filters(d);break; case V_LOG:view_log(d);break; default:view_dash(d);break; }
         ImGui::EndChild(); ImGui::EndChild(); ImGui::EndChild();
         ImGui::End();
 
