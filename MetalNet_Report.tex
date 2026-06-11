@@ -500,60 +500,42 @@ The message of this project is encouraging: you do not need a giant framework, a
 \prelimheading{LIST OF TABLES}
 \listoftables
 
-\vspace{0.8cm}
+\newpage
 
 % ========================================
 % LIST OF ABBREVIATIONS
 % ========================================
 \addcontentsline{toc}{chapter}{List of Abbreviations}
+\vspace*{1.5cm}
 \prelimheading{LIST OF ABBREVIATIONS}
 
-% Borderless two-column key/expansion list -- compact, fits a single page.
-% NOTE: row separators (\\) and cell separators (&) must stay at source level
-% so \halign sees them -- inside a macro they break in p{} columns.
-\setlength{\tabcolsep}{0pt}
-\setlength{\extrarowheight}{4.5pt}
-\renewcommand{\arraystretch}{1.1}
-
 \noindent
-\begin{minipage}[t]{0.5\textwidth}
-\begin{tabular}{@{}>{\raggedright\arraybackslash\color{mnAccent}\bfseries}p{2.0cm}@{\hspace{0.4cm}}>{\raggedright\arraybackslash}p{4.8cm}@{}}
-CNN & Convolutional Neural Network\\
-GEMM & General Matrix Multiplication\\
-SIMD & Single Instruction, Multiple Data\\
-AVX2 & Advanced Vector Extensions 2\\
-FMA & Fused Multiply--Add\\
-im2col & Image to Column\\
-DAG & Directed Acyclic Graph\\
-SGD & Stochastic Gradient Descent\\
-BN & Batch Normalization\\
-ReLU & Rectified Linear Unit\\
-NHWC & Batch, Height, Width, Channels\\
-NCHW & Batch, Channels, Height, Width\\
+\begin{tabular}{@{}>{\raggedright\arraybackslash\bfseries}p{2.5cm}>{\raggedright\arraybackslash}p{10.0cm}@{}}
+CNN & Convolutional Neural Network \\
+GEMM & General Matrix Multiplication \\
+SIMD & Single Instruction, Multiple Data \\
+AVX2 & Advanced Vector Extensions 2 \\
+FMA & Fused Multiply--Add \\
+im2col & Image to Column \\
+DAG & Directed Acyclic Graph \\
+SGD & Stochastic Gradient Descent \\
+BN & Batch Normalization \\
+ReLU & Rectified Linear Unit \\
+NHWC & Batch, Height, Width, Channels \\
+NCHW & Batch, Channels, Height, Width \\
+L1/L2 & Level 1 / Level 2 Cache \\
+OpenMP & Open Multi-Processing \\
+GPU & Graphics Processing Unit \\
+CPU & Central Processing Unit \\
+MNIST & Modified NIST handwritten digit dataset \\
+CIFAR & Canadian Institute For Advanced Research \\
+VGG & Visual Geometry Group \\
+API & Application Programming Interface \\
+DFD & Data Flow Diagram \\
+UML & Unified Modelling Language \\
+UAT & User Acceptance Testing \\
+IDE & Integrated Development Environment \\
 \end{tabular}
-\end{minipage}%
-\hfill
-\begin{minipage}[t]{0.5\textwidth}
-\begin{tabular}{@{}>{\raggedright\arraybackslash\color{mnAccent}\bfseries}p{2.0cm}@{\hspace{0.4cm}}>{\raggedright\arraybackslash}p{4.8cm}@{}}
-L1/L2 & Level 1 / Level 2 Cache\\
-OpenMP & Open Multi-Processing\\
-GPU & Graphics Processing Unit\\
-CPU & Central Processing Unit\\
-MNIST & Modified NIST handwritten digit dataset\\
-CIFAR & Canadian Institute For Advanced Research\\
-VGG & Visual Geometry Group\\
-API & Application Programming Interface\\
-DFD & Data Flow Diagram\\
-UML & Unified Modelling Language\\
-UAT & User Acceptance Testing\\
-IDE & Integrated Development Environment\\
-\end{tabular}
-\end{minipage}
-
-% restore default table metrics for the rest of the document
-\setlength{\tabcolsep}{6pt}
-\setlength{\extrarowheight}{0pt}
-\renewcommand{\arraystretch}{1.25}
 
 \newpage
 
