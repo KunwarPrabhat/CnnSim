@@ -333,7 +333,9 @@
 % ========================================
 % DECLARATION CERTIFICATE
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{Declaration Certificate}
+\addtocontents{toc}{\protect\end{NoHyper}}
 \vspace*{0.5cm}
 \prelimheading{DECLARATION CERTIFICATE}
 
@@ -377,8 +379,10 @@ Tatisilwai, Ranchi -- 835103
 % ========================================
 % CERTIFICATE OF APPROVAL
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{Certificate of Approval}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{CERTIFICATE OF APPROVAL}
 
 The foregoing project entitled ``MetalNet: Dependency-Free C++ CNN Header-Only Library'' is hereby approved as a creditable work on the topic and has been presented satisfactorily to warrant its acceptance as a prerequisite to the degree for which it has been submitted.
@@ -409,8 +413,10 @@ Tatisilwai, Ranchi -- 835103
 % ========================================
 % ACKNOWLEDGEMENT
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{Acknowledgement}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{ACKNOWLEDGEMENT}
 
 I take this opportunity to thank all who have contributed towards shaping this Final Year Project
@@ -438,23 +444,19 @@ not least, I would like to dedicate this work to my family for their love and un
 % ========================================
 % ABSTRACT
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{Abstract}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{ABSTRACT}
 
-Deep learning is everywhere today. It reads handwriting, recognizes faces, spots objects in photographs, and helps cars see the road. At the heart of most of these vision systems sits one idea: the Convolutional Neural Network (CNN). But there is a catch. The popular tools used to build CNNs, frameworks such as PyTorch and TensorFlow, are enormous. They take hundreds of megabytes to install, depend on long chains of external packages, and are tuned first and foremost for expensive GPUs. On an ordinary laptop or an embedded device with only a CPU, they carry a lot of weight that does nothing useful. The question this project asks is simple: how fast can a CNN really run on a normal CPU if every unnecessary layer is stripped away?
+Deep learning vision systems typically rely on large frameworks like PyTorch or TensorFlow, which carry significant dependency overhead and are designed primarily for GPUs. On CPU-only environments such as laptops or edge devices, these frameworks introduce unnecessary resource consumption. This project presents \textbf{MetalNet}, a high-performance Convolutional Neural Network (CNN) library written from scratch in pure C++20. MetalNet is fully \textbf{header-only} and \textbf{dependency-free}, requiring no installation, linking, or configuration, and is designed specifically to optimize CPU execution.
 
-The answer is \textbf{MetalNet}, a CNN library written from scratch in pure C++20. It is \textbf{header-only} and \textbf{dependency-free}: there is nothing to install, nothing to link against, and no framework to configure. A user copies the header files into a project, includes them, and compiles. Everything, from tensors and layers to training and file input and output, is built from the ground up using only the C++ standard library. The entire library is small enough to read and understand, which also makes it a useful learning resource for anyone who wants to know what really happens inside a neural network.
+Despite its lightweight design, MetalNet achieves high performance by treating the CPU as a first-class citizen. It implements an \textbf{Implicit GEMM} convolution algorithm that avoids memory-heavy \textit{im2col} buffering, and stores data in the cache-friendly \textbf{NHWC} layout. Innermost arithmetic operations are accelerated using hand-written \textbf{AVX2 and FMA} SIMD instructions, while loop tiling and parallelization via \textbf{OpenMP} optimize multi-core CPU scaling. Together, these optimizations yield a \textbf{57$\times$ speedup} in convolution operations over a naive scalar baseline.
 
-Being small does not mean being slow. In fact, the central result of this project is the opposite. MetalNet treats the CPU as a first-class citizen and applies, one by one, the optimizations that modern hardware rewards. Convolution is performed with an \textbf{Implicit GEMM} method, which computes the convolution directly as a matrix multiplication without first copying the image into a huge intermediate buffer (the memory-hungry \textit{im2col} step that many frameworks rely on). Data is stored in the \textbf{NHWC} (channels-last) layout, so the numbers a CPU needs next are sitting right beside the numbers it just used. Loops are \textbf{tiled} to fit inside the processor's L1 and L2 caches. The innermost arithmetic is hand-written with \textbf{AVX2 and FMA} vector instructions, so the CPU processes eight numbers in one step instead of one. Finally, \textbf{OpenMP} spreads the work across all available cores, scaling the thread count to the size of the problem. Measured together, these optimizations multiply: the finished convolution runs roughly \textbf{57$\times$ faster} than a naive scalar implementation of the same mathematics.
+MetalNet supports both training and inference. It features a Directed Acyclic Graph (DAG) based automatic differentiation engine, core layers (Convolutional, Batch Normalization, Pooling, Dense), activation functions, SGD and Adam optimizers, and a built-in profiler. Tested against PyTorch on LeNet-5, VGG-style, and ResNet-18 architectures, MetalNet consistently runs \textbf{1.6--2.4$\times$ faster} for inference on the same CPU while reducing peak memory consumption by approximately \textbf{70\%}. MetalNet demonstrates that high-performance deep learning is achievable on standard CPUs without complex external dependencies.
 
-MetalNet is not just an inference engine; it can train networks too. A \textbf{Directed Acyclic Graph (DAG) based automatic differentiation} engine records every operation during the forward pass and then walks the graph backwards to compute gradients, exactly as large frameworks do, but in a compact and transparent form. On top of this sit all the building blocks of a modern CNN: convolutional layers, batch normalization, dense layers, max and average pooling, common activation functions, and the SGD and Adam optimizers. A built-in profiler with visualization support shows where every millisecond goes, so bottlenecks are easy to find. Trained weights can be exported in NumPy-compatible files and training metrics are logged as CSV, so results remain easy to inspect with familiar tools.
-
-The library was put to the test against PyTorch's CPU backend on standard, well-known tasks. A LeNet-5 network trained on the MNIST handwritten-digit dataset converged smoothly and matched the accuracy of the equivalent PyTorch model. A VGG-style network trained on CIFAR-10 reached 84.1\% training and 82.3\% validation accuracy in twenty epochs. The headline numbers, however, come from inference speed: across LeNet, VGG-style, and ResNet-18 architectures, MetalNet ran \textbf{1.6--2.4$\times$ faster} than PyTorch on the same CPU (for example, a ResNet-18 forward pass took 52.1\,ms in MetalNet against 124.5\,ms in PyTorch), while using significantly less memory. The advantage held, and even grew slightly, as batch sizes increased.
-
-The message of this project is encouraging: you do not need a giant framework, a GPU, or gigabytes of dependencies to do serious deep learning. Careful algorithm choice, respect for the memory hierarchy, and honest use of the instructions a CPU already provides are enough to beat a heavyweight industrial framework on its own CPU turf. MetalNet shows that high performance and simplicity are not opposites, and it leaves behind a clean, readable codebase that students, researchers, and engineers can study, extend, and deploy anywhere a C++ compiler exists.
-
-\vspace{1cm}
+\vspace{0.8cm}
 
 \noindent \textbf{Keywords:} Convolutional Neural Networks, C++20, Header-Only Library, SIMD Optimization, Implicit GEMM, Automatic Differentiation, AVX2, Cache Optimization, OpenMP, Deep Learning, CPU Performance
 
@@ -476,8 +478,10 @@ The message of this project is encouraging: you do not need a giant framework, a
 \setlength{\cftbeforechapskip}{6pt}
 
 % Use Roman numerals for pages
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{Table of Contents}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{TABLE OF CONTENTS}
 \tableofcontents
 
@@ -486,8 +490,10 @@ The message of this project is encouraging: you do not need a giant framework, a
 % ========================================
 % LIST OF FIGURES
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{List of Figures}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{LIST OF FIGURES}
 \listoffigures
 
@@ -496,7 +502,9 @@ The message of this project is encouraging: you do not need a giant framework, a
 % ========================================
 % LIST OF TABLES
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{List of Tables}
+\addtocontents{toc}{\protect\end{NoHyper}}
 \prelimheading{LIST OF TABLES}
 \listoftables
 
@@ -505,8 +513,10 @@ The message of this project is encouraging: you do not need a giant framework, a
 % ========================================
 % LIST OF ABBREVIATIONS
 % ========================================
+\addtocontents{toc}{\protect\begin{NoHyper}}
 \addcontentsline{toc}{chapter}{List of Abbreviations}
-\vspace*{1.5cm}
+\addtocontents{toc}{\protect\end{NoHyper}}
+\vspace*{0.5cm}
 \prelimheading{LIST OF ABBREVIATIONS}
 
 \noindent
