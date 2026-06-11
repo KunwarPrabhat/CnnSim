@@ -40,14 +40,22 @@
 % ========================================
 % COLOR PALETTE (professional, consistent)
 % ========================================
-\definecolor{mnPrimary}{HTML}{1F3A5F}   % deep navy  - headers, chapter rules
-\definecolor{mnAccent}{HTML}{2E86AB}    % bright blue - accents, our system
-\definecolor{mnAccent2}{HTML}{E07A1F}   % warm orange - highlights, comparison
-\definecolor{mnGreen}{HTML}{2A9D5C}     % success green
+\definecolor{mnPrimary}{HTML}{000000}   % black - headers, chapter rules
+\definecolor{mnAccent}{HTML}{000000}    % black - accents, our system
+\definecolor{mnAccent2}{HTML}{000000}   % black - highlights, comparison
+\definecolor{mnGreen}{HTML}{000000}     % black
 \definecolor{mnHeaderBg}{HTML}{1F3A5F}  % table header fill
 \definecolor{mnRowA}{HTML}{EEF3F8}      % zebra row light blue
 \definecolor{mnRowB}{HTML}{FFFFFF}      % zebra row white
-\definecolor{mnRule}{HTML}{2E86AB}
+\definecolor{mnRule}{HTML}{000000}
+
+% Figure styling colors (lighter, professional palette)
+\definecolor{figPrimary}{HTML}{1F3A5F}   % deep navy
+\definecolor{figAccent}{HTML}{2E86AB}    % bright blue
+\definecolor{figAccent2}{HTML}{E07A1F}   % warm orange
+\definecolor{figGreen}{HTML}{2A9D5C}     % success green
+\definecolor{figOurs}{HTML}{5DADE2}      % soft blue for our results
+\definecolor{figRef}{HTML}{F1948A}       % soft coral red for reference results
 
 % Code listing colors
 \definecolor{codeBg}{HTML}{F7F9FB}
@@ -64,12 +72,12 @@
 % ========================================
 \newcommand{\citlogo}{%
   \begin{tikzpicture}[scale=1.0]
-    \draw[line width=1.2pt,mnPrimary] (0,0) circle (1.15cm);
-    \draw[line width=0.6pt,mnPrimary] (0,0) circle (1.0cm);
-    \node[mnPrimary] at (0,0.18) {\bfseries\large CIT};
-    \node[mnPrimary] at (0,-0.32) {\tiny\bfseries TECHNOLOGY};
-    \node[mnAccent2] at (0,-0.78) {\tiny\itshape Estd. 2001};
-    \foreach \a in {0,30,...,330}{\fill[mnAccent] (\a:1.07cm) circle (0.5pt);}
+    \draw[line width=1.2pt,figPrimary] (0,0) circle (1.15cm);
+    \draw[line width=0.6pt,figPrimary] (0,0) circle (1.0cm);
+    \node[figPrimary] at (0,0.18) {\bfseries\large CIT};
+    \node[figPrimary] at (0,-0.32) {\tiny\bfseries TECHNOLOGY};
+    \node[figAccent2] at (0,-0.78) {\tiny\itshape Estd. 2001};
+    \foreach \a in {0,30,...,330}{\fill[figAccent] (\a:1.07cm) circle (0.5pt);}
   \end{tikzpicture}%
 }
 
@@ -97,9 +105,9 @@
   },
 }
 % series colors
-\colorlet{seriesOurs}{mnAccent}
-\colorlet{seriesRef}{mnAccent2}
-\colorlet{seriesThird}{mnGreen}
+\colorlet{seriesOurs}{figOurs}
+\colorlet{seriesRef}{figRef}
+\colorlet{seriesThird}{figGreen}
 
 % Font settings
 
@@ -150,10 +158,13 @@
 \usepackage{titlesec}
 % Tight inline chapter heading: "CHAPTER N -- TITLE" with an accent rule beneath.
 % Number hugs the title (small sep) -- no large tab gap.
+\usepackage{titlesec}
+% Tight inline chapter heading: "CHAPTER N -- TITLE" with NO accent rule beneath.
+% Number hugs the title (small sep) -- no large tab gap.
 \titleformat{\chapter}[block]
   {\normalfont\fontsize{16}{19}\bfseries\sffamily\centering\color{mnPrimary}}
   {\color{mnAccent}CHAPTER \thechapter}{0.45em}{\textbf{\textendash}\hspace{0.45em}}
-  [\vspace{4pt}{\color{mnRule}\titlerule[1.1pt]}]
+  []
 \titlespacing*{\chapter}{0pt}{-12pt}{20pt}
 
 \titleformat{\section}
@@ -211,8 +222,7 @@
 % Consistent heading style for un-numbered preliminary pages
 \newcommand{\prelimheading}[1]{%
   \begin{center}
-    {\Large\bfseries\sffamily\color{mnPrimary} #1}\\[6pt]
-    {\color{mnRule}\rule{0.44\textwidth}{1.1pt}}
+    {\Large\bfseries\sffamily\color{mnPrimary} #1}
   \end{center}
   \vspace{1cm}%
 }
@@ -225,6 +235,31 @@
 \renewcommand{\@cftmakeloftitle}{}
 \renewcommand{\@cftmakelottitle}{}
 \makeatother
+
+% tocloft configurations to remove dots (replace with space)
+\renewcommand{\cftchapleader}{\hfill}
+\renewcommand{\cftsecleader}{\hfill}
+\renewcommand{\cftsubsecleader}{\hfill}
+\renewcommand{\cftfigleader}{\hfill}
+\renewcommand{\cfttableader}{\hfill}
+
+% include Figure/Table before numbers in lists
+\renewcommand{\cftfigpresnum}{Figure }
+\setlength{\cftfignumwidth}{2.3cm}
+\renewcommand{\cfttabpresnum}{Table }
+\setlength{\cfttabnumwidth}{2.1cm}
+
+% TOC font formatting (default normal/unbold for prelims and appendix)
+\renewcommand{\cftchapfont}{\normalfont\sffamily\color{black!85}}
+\renewcommand{\cftchappagefont}{\normalfont\color{black!85}}
+\renewcommand{\cftsecfont}{\normalfont\color{black!85}}
+\renewcommand{\cftsecpagefont}{\normalfont\color{black!85}}
+\renewcommand{\cftsubsecfont}{\normalfont\color{black!85}}
+\renewcommand{\cftsubsecpagefont}{\normalfont\color{black!85}}
+\renewcommand{\cftfigfont}{\normalfont}
+\renewcommand{\cftfigpagefont}{\normalfont}
+\renewcommand{\cfttabfont}{\normalfont}
+\renewcommand{\cfttabpagefont}{\normalfont}
 
 % Remove page numbers from chapter starts
 \fancypagestyle{plain}{
@@ -244,7 +279,7 @@
     colorlinks=true,
     linkcolor=black,
     filecolor=black,
-    urlcolor=blue,
+    urlcolor=black,
     citecolor=black
 }
 
@@ -265,9 +300,9 @@
     IN PARTIAL FULFILMENT OF THE REQUIREMENT\\
     FOR THE AWARD OF THE DEGREE\\
     OF\\
-    \textbf{BACHELOR OF TECHNOLOGY}\\
+    \textbf{\Large BACHELOR OF TECHNOLOGY\\
     IN\\
-    \textbf{COMPUTER SCIENCE \& ENGINEERING}
+    COMPUTER SCIENCE \& ENGINEERING}
 
     \vspace{0.6cm}
     \IfFileExists{images/cit.jpeg}{\includegraphics[width=2.6cm]{cit.jpeg}}{\IfFileExists{images/cit.png}{\includegraphics[width=2.6cm]{cit.png}}{\citlogo}}
@@ -277,9 +312,9 @@
 
     \vspace{0.8cm}
     \begin{tabular}{@{}lr@{}}
-    Raj Kunwar Prabhat & 22050440078 \\
-    Mayan Kumar & 22050440058 \\
-    Sujeet Kumar & 22050440097 \\
+    \textbf{Raj Kunwar Prabhat} & \textbf{22050440078} \\
+    \textbf{Mayan Kumar} & \textbf{22050440058} \\
+    \textbf{Sujeet Kumar} & \textbf{22050440097} \\
     \end{tabular}
 
     \vspace{0.8cm}
@@ -299,16 +334,16 @@
 % DECLARATION CERTIFICATE
 % ========================================
 \addcontentsline{toc}{chapter}{Declaration Certificate}
-\vspace*{1.5cm}
+\vspace*{0.5cm}
 \prelimheading{DECLARATION CERTIFICATE}
 
 This is to certify that the work presented in the project entitled \textbf{``MetalNet: Dependency-Free C++ CNN Header-Only Library''} in partial fulfilment of the requirements for the award of the degree of Bachelor of Technology in Computer Science \& Engineering at Cambridge Institute of Technology, Tatisilwai, Ranchi is an authentic work carried out under my supervision and guidance.
 
-\vspace{2cm}
+\vspace{0.8cm}
 
 To the best of my knowledge, the content of this project does not form a basis for the award of any previous Degree to anyone else.
 
-\vspace{3.5cm}
+\vspace{1.2cm}
 
 Date: \underline{\hspace{3cm}} \hfill \underline{\hspace{3.5cm}}\\
 \vspace{0.2cm}
@@ -318,20 +353,19 @@ Date: \underline{\hspace{3cm}} \hfill \underline{\hspace{3.5cm}}\\
 \phantom{Date: } \hfill Cambridge Institute of Technology\\
 \phantom{Date: } \hfill Tatisilwai, Ranchi -- 835103
 
-\newpage
-\vspace*{1cm}
+\vspace{1.0cm}
 
 \begin{center}
 \line(1,0){400}
 \end{center}
 
-\vspace{1.5cm}
+\vspace{0.5cm}
 
 \begin{center}
 \textbf{\large PROF. DEEPAK KUMAR VERMA}\\
 \textbf{(Head of Department)}
 
-\vspace{0.5cm}
+\vspace{0.4cm}
 
 Dept. of Computer Science and Engineering\\
 Cambridge Institute of Technology\\
@@ -347,7 +381,7 @@ Tatisilwai, Ranchi -- 835103
 \vspace*{1.5cm}
 \prelimheading{CERTIFICATE OF APPROVAL}
 
-The foregoing project entitled \textbf{``MetalNet: Dependency-Free C++ CNN Header-Only Library''} is hereby approved as a creditable work on the topic and has been presented satisfactorily to warrant its acceptance as a prerequisite to the degree for which it has been submitted.
+The foregoing project entitled ``MetalNet: Dependency-Free C++ CNN Header-Only Library'' is hereby approved as a creditable work on the topic and has been presented satisfactorily to warrant its acceptance as a prerequisite to the degree for which it has been submitted.
 
 \vspace{1.5cm}
 
@@ -355,10 +389,11 @@ It is understood that by this approval, the undersigned does not necessarily end
 
 \vspace{3cm}
 
-\begin{tabular}{@{}c@{\hspace{2cm}}c@{}}
-\rule{4cm}{0.4pt} & \rule{4cm}{0.4pt} \\
+\noindent
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}c c@{}}
+\\[1.5cm]
 (Internal Examiner) & (External Examiner) \\
-\end{tabular}
+\end{tabular*}
 
 \vspace{2cm}
 
@@ -378,11 +413,18 @@ Tatisilwai, Ranchi -- 835103
 \vspace*{1.5cm}
 \prelimheading{ACKNOWLEDGEMENT}
 
-We take this opportunity to thank all who have contributed towards shaping this Final Year Project Report. We would like to express our sincere thanks to Prof. Deepak Kumar Verma (HOD, Department of Computer Science \& Engineering) and to our guide, whose help in the course of development of this manuscript is invaluable. As our supervisor, he/she has constantly encouraged us to remain focused on achieving our goal.
+I take this opportunity to thank all who have contributed towards shaping this Final Year Project
+Report. I would like to express my sincere thanks to Prof. Deepak Kumar Verma (HOD,
+Department of Computer Science \& Engineering) and to my guide Prof.
+Deepak Kumar Verma, whose help in the course of development of this
+manuscript is invaluable. As my supervisor, he/she has constantly encouraged me to remain
+focused on achieving my goal.
 
-We would also like to thank the technical staff members of the Department who have been kind enough to advise and help in their respective roles. We have been fortunate to have a wonderful support structure among fellow students. Our sincere thanks to everyone who has provided us with kind words, new ideas, useful criticism, or their valuable time. We are truly indebted to all those who supported us throughout this project journey.
-
-Last but not least, we would like to dedicate this work to our families for their love and understanding during the course of this project. Their continuous support and encouragement have been instrumental in making this project a success.
+I would also like to thank the technical staff members of the Department who have been kind
+enough to advise and help in their respective roles. I have been fortunate to have a wonderful
+support structure among fellow students. My sincere thanks to everyone who has provided me
+with kind words, new ideas, useful criticism, or their valuable time. I am truly indebted. Last but
+not least, I would like to dedicate this work to my family for their love and understanding.
 
 \vspace{3cm}
 
@@ -400,7 +442,7 @@ Last but not least, we would like to dedicate this work to our families for thei
 \vspace*{1.5cm}
 \prelimheading{ABSTRACT}
 
-Deep learning is everywhere today. It reads handwriting, recognizes faces, spots objects in photographs, and helps cars see the road. At the heart of most of these vision systems sits one idea: the Convolutional Neural Network (CNN). But there is a catch. The popular tools used to build CNNs, frameworks such as PyTorch and TensorFlow, are enormous. They take hundreds of megabytes to install, depend on long chains of external packages, and are tuned first and foremost for expensive GPUs. On an ordinary laptop or an embedded device with only a CPU, they carry a lot of weight that does nothing useful. The question this project asks is simple: \textit{how fast can a CNN really run on a normal CPU if every unnecessary layer is stripped away?}
+Deep learning is everywhere today. It reads handwriting, recognizes faces, spots objects in photographs, and helps cars see the road. At the heart of most of these vision systems sits one idea: the Convolutional Neural Network (CNN). But there is a catch. The popular tools used to build CNNs, frameworks such as PyTorch and TensorFlow, are enormous. They take hundreds of megabytes to install, depend on long chains of external packages, and are tuned first and foremost for expensive GPUs. On an ordinary laptop or an embedded device with only a CPU, they carry a lot of weight that does nothing useful. The question this project asks is simple: how fast can a CNN really run on a normal CPU if every unnecessary layer is stripped away?
 
 The answer is \textbf{MetalNet}, a CNN library written from scratch in pure C++20. It is \textbf{header-only} and \textbf{dependency-free}: there is nothing to install, nothing to link against, and no framework to configure. A user copies the header files into a project, includes them, and compiles. Everything, from tensors and layers to training and file input and output, is built from the ground up using only the C++ standard library. The entire library is small enough to read and understand, which also makes it a useful learning resource for anyone who wants to know what really happens inside a neural network.
 
@@ -426,8 +468,8 @@ The message of this project is encouraging: you do not need a giant framework, a
 \renewcommand{\cftchapaftersnum}{ \textendash\hspace{0.35em}}
 \setlength{\cftchapnumwidth}{3.05cm}
 % Bold navy chapter entries, accent leaders, tighter spacing
-\renewcommand{\cftchapfont}{\bfseries\sffamily\color{mnPrimary}}
-\renewcommand{\cftchappagefont}{\bfseries\color{mnPrimary}}
+\renewcommand{\cftchapfont}{\normalfont\sffamily\color{mnPrimary}}
+\renewcommand{\cftchappagefont}{\normalfont\color{mnPrimary}}
 \renewcommand{\cftsecfont}{\color{black!85}}
 \renewcommand{\cftsecpagefont}{\color{black!85}}
 \renewcommand{\cftchapdotsep}{\cftdotsep}
@@ -449,23 +491,21 @@ The message of this project is encouraging: you do not need a giant framework, a
 \prelimheading{LIST OF FIGURES}
 \listoffigures
 
-\newpage
+\vspace{0.8cm}
 
 % ========================================
 % LIST OF TABLES
 % ========================================
 \addcontentsline{toc}{chapter}{List of Tables}
-\vspace*{1.5cm}
 \prelimheading{LIST OF TABLES}
 \listoftables
 
-\newpage
+\vspace{0.8cm}
 
 % ========================================
 % LIST OF ABBREVIATIONS
 % ========================================
 \addcontentsline{toc}{chapter}{List of Abbreviations}
-\vspace*{1.5cm}
 \prelimheading{LIST OF ABBREVIATIONS}
 
 % Borderless two-column key/expansion list -- compact, fits a single page.
@@ -522,6 +562,9 @@ IDE & Integrated Development Environment\\
 % ========================================
 \pagenumbering{arabic}
 \setcounter{page}{1}
+
+\addtocontents{toc}{\protect\renewcommand{\protect\cftchapfont}{\protect\bfseries\protect\sffamily\protect\color{mnPrimary}}}
+\addtocontents{toc}{\protect\renewcommand{\protect\cftchappagefont}{\protect\bfseries\protect\color{mnPrimary}}}
 
 \chapter{INTRODUCTION}
 \setcounter{page}{1}
@@ -844,30 +887,30 @@ Provides:
 \centering
 \begin{tikzpicture}[
   font=\footnotesize\sffamily,
-  band/.style={draw=mnPrimary!70,line width=0.7pt,rounded corners=3pt,
+  band/.style={draw=figPrimary!70,line width=0.7pt,rounded corners=3pt,
                minimum height=0.92cm,text=white,align=center,blur shadow={shadow blur steps=4,shadow xshift=0.4pt,shadow yshift=-0.6pt}},
-  arr/.style={-{Stealth[length=2.6mm]},mnAccent2,line width=1.1pt}
+  arr/.style={-{Stealth[length=2.6mm]},figAccent2,line width=1.1pt}
 ]
 % ---- Layer bands (top = application, bottom = hardware) ----
-\node[band,fill=mnAccent,minimum width=13cm]                       (l1) at (0,0)    {\bfseries User Application};
+\node[band,fill=figAccent,minimum width=13cm]                       (l1) at (0,0)    {\bfseries User Application};
 
-\node[band,fill=mnAccent!82!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l2a) at (-4.4,-1.45) {Model API};
-\node[band,fill=mnAccent!82!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l2b) at (0,-1.45)    {Training API};
-\node[band,fill=mnAccent!82!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l2c) at (4.4,-1.45)  {Profiler API};
+\node[band,fill=figAccent!82!figPrimary,minimum width=4.2cm,text width=3.8cm] (l2a) at (-4.4,-1.45) {Model API};
+\node[band,fill=figAccent!82!figPrimary,minimum width=4.2cm,text width=3.8cm] (l2b) at (0,-1.45)    {Training API};
+\node[band,fill=figAccent!82!figPrimary,minimum width=4.2cm,text width=3.8cm] (l2c) at (4.4,-1.45)  {Profiler API};
 
-\node[band,fill=mnAccent!60!mnPrimary,minimum width=3.1cm,text width=2.7cm] (l3a) at (-4.95,-2.9) {Layer\\Implementations};
-\node[band,fill=mnAccent!60!mnPrimary,minimum width=3.1cm,text width=2.7cm] (l3b) at (-1.65,-2.9) {Loss\\Functions};
-\node[band,fill=mnAccent!60!mnPrimary,minimum width=3.1cm,text width=2.7cm] (l3c) at (1.65,-2.9)  {Optimizers};
-\node[band,fill=mnAccent!60!mnPrimary,minimum width=3.1cm,text width=2.7cm] (l3d) at (4.95,-2.9)  {Activations};
+\node[band,fill=figAccent!60!figPrimary,minimum width=3.1cm,text width=2.7cm] (l3a) at (-4.95,-2.9) {Layer\\Implementations};
+\node[band,fill=figAccent!60!figPrimary,minimum width=3.1cm,text width=2.7cm] (l3b) at (-1.65,-2.9) {Loss\\Functions};
+\node[band,fill=figAccent!60!figPrimary,minimum width=3.1cm,text width=2.7cm] (l3c) at (1.65,-2.9)  {Optimizers};
+\node[band,fill=figAccent!60!figPrimary,minimum width=3.1cm,text width=2.7cm] (l3d) at (4.95,-2.9)  {Activations};
 
-\node[band,fill=mnAccent!40!mnPrimary,minimum width=6.4cm,text width=6.0cm] (l4a) at (-3.3,-4.35) {Automatic Differentiation Engine};
-\node[band,fill=mnAccent!40!mnPrimary,minimum width=6.4cm,text width=6.0cm] (l4b) at (3.3,-4.35)  {Tensor Operations};
+\node[band,fill=figAccent!40!figPrimary,minimum width=6.4cm,text width=6.0cm] (l4a) at (-3.3,-4.35) {Automatic Differentiation Engine};
+\node[band,fill=figAccent!40!figPrimary,minimum width=6.4cm,text width=6.0cm] (l4b) at (3.3,-4.35)  {Tensor Operations};
 
-\node[band,fill=mnAccent!22!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l5a) at (-4.4,-5.8) {SIMD Intrinsics};
-\node[band,fill=mnAccent!22!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l5b) at (0,-5.8)    {Cache Optimization};
-\node[band,fill=mnAccent!22!mnPrimary,minimum width=4.2cm,text width=3.8cm] (l5c) at (4.4,-5.8)  {Memory Management};
+\node[band,fill=figAccent!22!figPrimary,minimum width=4.2cm,text width=3.8cm] (l5a) at (-4.4,-5.8) {SIMD Intrinsics};
+\node[band,fill=figAccent!22!figPrimary,minimum width=4.2cm,text width=3.8cm] (l5b) at (0,-5.8)    {Cache Optimization};
+\node[band,fill=figAccent!22!figPrimary,minimum width=4.2cm,text width=3.8cm] (l5c) at (4.4,-5.8)  {Memory Management};
 
-\node[band,fill=mnPrimary,minimum width=13cm]                      (l6) at (0,-7.25) {\bfseries Hardware \textendash\ CPU with AVX2 / FMA};
+\node[band,fill=figPrimary,minimum width=13cm]                      (l6) at (0,-7.25) {\bfseries Hardware \textendash\ CPU with AVX2 / FMA};
 
 % ---- Flow arrows on central axis ----
 \draw[arr] (0,-0.46)  -- (0,-0.99);
@@ -876,7 +919,7 @@ Provides:
 \draw[arr] (0,-4.81)  -- (0,-5.34);
 \draw[arr] (0,-6.26)  -- (0,-6.79);
 \end{tikzpicture}
-\caption{MetalNet system architecture: a layered design from the high-level user API down to AVX2/FMA hardware.}
+\caption[MetalNet system architecture]{MetalNet system architecture: a layered design from the high-level user API down to AVX2/FMA hardware.}
 \label{fig:architecture}
 \end{figure}
 
@@ -888,20 +931,20 @@ Provides:
 \centering
 \begin{tikzpicture}[
   font=\small\sffamily,>={Stealth[length=2.6mm]},
-  entity/.style={draw=mnPrimary,line width=0.9pt,fill=mnRowA,rounded corners=2pt,
+  entity/.style={draw=figPrimary,line width=0.9pt,fill=mnRowA,rounded corners=2pt,
                  minimum width=3.0cm,minimum height=1.5cm,align=center},
-  proc/.style={draw=mnAccent,line width=1pt,fill=mnAccent!15,circle,
-               minimum size=2.7cm,align=center,text=mnPrimary},
-  flow/.style={->,mnAccent2,line width=1.1pt}
+  proc/.style={draw=figAccent,line width=1pt,fill=figAccent!15,circle,
+               minimum size=2.7cm,align=center,text=figPrimary},
+  flow/.style={->,figAccent2,line width=1.1pt}
 ]
 \node[entity] (user) at (0,0) {\bfseries User\\\bfseries Application};
 \node[proc]   (lib)  at (7,0) {\bfseries MetalNet\\\bfseries Library\\[2pt]\footnotesize(0)};
 \draw[flow] (user.north east) to[bend left=22]
-      node[above,midway,text=mnPrimary]{\footnotesize Training Data, Model Config} (lib.north west);
+      node[above,midway,text=figPrimary]{\footnotesize Training Data, Model Config} (lib.north west);
 \draw[flow] (lib.south west) to[bend left=22]
-      node[below,midway,text=mnPrimary]{\footnotesize Results, Metrics, Trained Weights} (user.south east);
+      node[below,midway,text=figPrimary]{\footnotesize Results, Metrics, Trained Weights} (user.south east);
 \end{tikzpicture}
-\caption{Data Flow Diagram: Level 0 (Context Diagram).}
+\caption[Data Flow Diagram: Level 0 (Context Diagram)]{Data Flow Diagram: Level 0 (Context Diagram).}
 \label{fig:dfd0}
 \end{figure}
 
@@ -912,13 +955,13 @@ Provides:
 \begin{tikzpicture}[
   font=\footnotesize\sffamily,>={Stealth[length=2.6mm]},
   node distance=1.0cm and 1.15cm,
-  io/.style={draw=mnPrimary,line width=0.8pt,fill=mnAccent2!18,rounded corners=2pt,
-             minimum width=2.55cm,minimum height=1.05cm,align=center,text=mnPrimary},
-  proc/.style={draw=mnAccent,line width=0.9pt,fill=mnAccent!16,rounded corners=5pt,
-               minimum width=2.55cm,minimum height=1.05cm,align=center,text=mnPrimary,
+  io/.style={draw=figPrimary,line width=0.8pt,fill=figAccent2!18,rounded corners=2pt,
+             minimum width=2.55cm,minimum height=1.05cm,align=center,text=figPrimary},
+  proc/.style={draw=figAccent,line width=0.9pt,fill=figAccent!16,rounded corners=5pt,
+               minimum width=2.55cm,minimum height=1.05cm,align=center,text=figPrimary,
                blur shadow={shadow blur steps=4,shadow xshift=0.3pt,shadow yshift=-0.5pt}},
-  fl/.style={->,mnAccent2,line width=1.05pt},
-  fb/.style={->,mnGreen,line width=1pt,dashed}
+  fl/.style={->,figAccent2,line width=1.05pt},
+  fb/.style={->,figGreen,line width=1pt,dashed}
 ]
 \node[io]               (in)   {Input\\Data};
 \node[proc,right=of in]  (fwd)  {Forward\\Pass};
@@ -935,9 +978,9 @@ Provides:
 
 % feedback: optimiser update -> forward pass (next iteration)
 \draw[fb] (opt.north) -- ++(0,0.55) coordinate(fbtop) -| (fwd.south);
-\node[above,text=mnGreen,font=\scriptsize] at (fbtop) {training loop (next iteration)};
+\node[above,text=figGreen,font=\scriptsize] at (fbtop) {training loop (next iteration)};
 \end{tikzpicture}
-\caption{Data Flow Diagram: Level 1 (training pipeline with the weight-update feedback loop).}
+\caption[Data Flow Diagram: Level 1 (Training Pipeline)]{Data Flow Diagram: Level 1 (training pipeline with the weight-update feedback loop).}
 \label{fig:dfd1}
 \end{figure}
 
@@ -1140,9 +1183,9 @@ At the operation level, activation functions that do not require the input value
 
 Although MetalNet is designed as a fully self-contained library with no mandatory external dependencies, the system provides several integration pathways for users who wish to connect it to the broader scientific computing ecosystem. Trained weight tensors can be serialized to binary float arrays compatible with NumPy's \texttt{.npy} format, allowing model weights to be inspected, plotted, or analysed in Python without any conversion step. Training metrics such as epoch loss, validation accuracy, and per-layer timing data are logged in CSV format at configurable intervals, enabling visualization in external tools such as Matplotlib or Gnuplot and allowing training runs to be resumed from checkpoints.
 
-Looking forward, the library's architecture is designed to facilitate ONNX (Open Neural Network Exchange) export in a future version. Because each layer's forward pass is defined by a small set of linear-algebraic operations with known mathematical semantics, translating them to ONNX graph nodes is straightforward. ONNX compatibility would allow MetalNet-trained models to be deployed through runtimes such as ONNX Runtime, TensorRT, or OpenVINO, extending the library's reach to production inference environments while retaining MetalNet's role as the high-performance CPU training backend.
-
 \newpage
+
+Looking forward, the library's architecture is designed to facilitate ONNX (Open Neural Network Exchange) export in a future version. Because each layer's forward pass is defined by a small set of linear-algebraic operations with known mathematical semantics, translating them to ONNX graph nodes is straightforward. ONNX compatibility would allow MetalNet-trained models to be deployed through runtimes such as ONNX Runtime, TensorRT, or OpenVINO, extending the library's reach to production inference environments while retaining MetalNet's role as the high-performance CPU training backend.
 
 % ========================================
 % CHAPTER 5: TESTING AND RESULTS
@@ -1260,15 +1303,16 @@ ResNet-18 & \ours{52.1} & 124.5 & \win{2.39$\times$} \\
   xtick=data,
   ylabel={Latency (ms / batch)},
   ymin=0,ymax=140,
+  legend style={draw=none,fill=none,font=\scriptsize,legend columns=-1},
   legend pos=north west,legend cell align=left,
   nodes near coords align={vertical},
 ]
 \addplot[fill=seriesOurs,draw=seriesOurs!70!black] coordinates {(LeNet-5,3.2)(VGG-16,45.3)(ResNet-18,52.1)};
 \addplot[fill=seriesRef,draw=seriesRef!70!black]   coordinates {(LeNet-5,5.1)(VGG-16,89.7)(ResNet-18,124.5)};
-\legend{MetalNet,PyTorch (CPU)}
+\legend{Ours,PyTorch}
 \end{axis}
 \end{tikzpicture}
-\caption{Inference latency of MetalNet versus the PyTorch CPU backend (lower is better). MetalNet is consistently $1.6$--$2.4\times$ faster across architectures.}
+\caption[Inference latency comparison]{Inference latency of MetalNet versus the PyTorch CPU backend (lower is better). MetalNet is consistently $1.6$--$2.4\times$ faster across architectures.}
 \label{fig:latencybar}
 \end{figure}
 
@@ -1299,15 +1343,16 @@ ResNet-18 & \ours{312} & 1024 & \win{69.5\%} \\
   xtick=data,
   ylabel={Peak memory (MB)},
   ymin=0,ymax=1150,
+  legend style={draw=none,fill=none,font=\scriptsize,legend columns=-1},
   legend pos=north west,legend cell align=left,
   bar width=18pt,
 ]
 \addplot[fill=seriesOurs,draw=seriesOurs!70!black] coordinates {(VGG-16,245)(ResNet-18,312)};
 \addplot[fill=seriesRef,draw=seriesRef!70!black]   coordinates {(VGG-16,856)(ResNet-18,1024)};
-\legend{MetalNet,PyTorch (CPU)}
+\legend{Ours,PyTorch}
 \end{axis}
 \end{tikzpicture}
-\caption{Peak inference memory. Eliminating im2col buffers and fusing Conv\,$\rightarrow$\,BN\,$\rightarrow$\,ReLU cuts memory by roughly $70\%$.}
+\caption[Peak inference memory comparison]{Peak inference memory. Eliminating im2col buffers and fusing Conv\,$\rightarrow$\,BN\,$\rightarrow$\,ReLU cuts memory by roughly $70\%$.}
 \label{fig:membar}
 \end{figure}
 
@@ -1330,6 +1375,7 @@ Performance scaling with batch size:
   xlabel={Batch Size},ylabel={Latency (ms / batch)},
   xtick={1,8,16,32,64},
   ymin=0,ymax=36,
+  legend style={draw=none,fill=none,font=\scriptsize,legend columns=-1},
   legend pos=north east,
   legend cell align=left,
 ]
@@ -1337,10 +1383,10 @@ Performance scaling with batch size:
   coordinates {(1,32.1)(8,24.5)(16,23.8)(32,23.2)(64,23.0)};
 \addplot[seriesOurs,mark=*,mark options={fill=seriesOurs}]
   coordinates {(1,18.5)(8,12.3)(16,11.7)(32,11.2)(64,11.0)};
-\legend{PyTorch (CPU),MetalNet}
+\legend{PyTorch,Ours}
 \end{axis}
 \end{tikzpicture}
-\caption{VGG-16 inference latency versus batch size. MetalNet stays roughly $2\times$ faster than the PyTorch CPU backend, and the gap widens slightly as larger batches improve SIMD and cache utilisation.}
+\caption[VGG-16 inference latency versus batch size]{VGG-16 inference latency versus batch size. MetalNet stays roughly $2\times$ faster than the PyTorch CPU backend, and the gap widens slightly as larger batches improve SIMD and cache utilisation.}
 \label{fig:batchscaling}
 \end{figure}
 
@@ -1366,15 +1412,16 @@ Performance scaling with thread count (VGG-16, batch=32):
   xlabel={Thread count},ylabel={Speedup vs.\ single core},
   xtick={1,2,4,6},ytick={1,2,3,4,5,6},
   xmin=0.7,xmax=6.3,ymin=0,ymax=6.4,
+  legend style={draw=none,fill=none,font=\scriptsize,legend columns=-1},
   legend pos=north west,legend cell align=left,
 ]
 \addplot[seriesThird,dashed,mark=none] coordinates {(1,1)(6,6)};
 \addplot[seriesOurs,mark=*,mark options={fill=seriesOurs}]
   coordinates {(1,1.0)(2,1.9)(4,3.74)(6,5.52)};
-\legend{Ideal (linear),MetalNet}
+\legend{Ideal (linear),Ours}
 \end{axis}
 \end{tikzpicture}
-\caption{OpenMP scaling efficiency. MetalNet tracks the ideal linear curve closely, retaining $>92\%$ efficiency on six cores thanks to adaptive, workload-aware threading.}
+\caption[OpenMP scaling efficiency]{OpenMP scaling efficiency. MetalNet tracks the ideal linear curve closely, retaining $>92\%$ efficiency on six cores thanks to adaptive, workload-aware threading.}
 \label{fig:threadscaling}
 \end{figure}
 
@@ -1413,7 +1460,7 @@ Baseline (Naive Convolution)        & 1.00$\times$ & 1.0$\times$ \\
   {(1,Baseline)(6.2,SIMD AVX2)(8.1,Implicit GEMM)(9.3,Cache Tiling)(10.4,Operator Fusion)(57,Multithreading)};
 \end{axis}
 \end{tikzpicture}
-\caption{Cumulative speedup as each optimization is layered on. Effects are multiplicative; the combined stack reaches roughly $57\times$ over a naive scalar convolution.}
+\caption[Cumulative speedup of layered optimizations]{Cumulative speedup as each optimization is layered on. Effects are multiplicative; the combined stack reaches roughly $57\times$ over a naive scalar convolution.}
 \label{fig:optstack}
 \end{figure}
 
@@ -1703,9 +1750,12 @@ All students contributed equally to design decisions, code reviews, and overall 
 % ========================================
 % APPENDIX A: SOURCE CODE
 % ========================================
-\addcontentsline{toc}{chapter}{Appendix A: Source Code Highlights}
+\addtocontents{toc}{\protect\renewcommand{\protect\cftchapfont}{\protect\normalfont\protect\sffamily\protect\color{black!85}}}
+\addtocontents{toc}{\protect\renewcommand{\protect\cftchappagefont}{\protect\normalfont\protect\color{black!85}}}
+\addcontentsline{toc}{chapter}{Appendix A \textendash\ Source Code}
 \appendix
-\chapter{SOURCE CODE HIGHLIGHTS}
+\stepcounter{chapter}
+\chapter*{Appendix A \textendash\ Source Code}
 
 \section{Core Tensor Class}
 
@@ -1905,7 +1955,9 @@ public:
 } // namespace MetalNet
 \end{lstlisting}
 
-\chapter{SCREENSHOTS AND SAMPLE OUTPUTS}
+\addcontentsline{toc}{chapter}{Appendix B \textendash\ Screenshots / Sample Outputs}
+\stepcounter{chapter}
+\chapter*{Appendix B \textendash\ Screenshots / Sample Outputs}
 
 \section{Output Screenshots}
 

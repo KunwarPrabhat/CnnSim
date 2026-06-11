@@ -37,3 +37,9 @@ test_results.txt
 !CMakeLists.txt
 
 *.csv
+
+*.aux
+*.lof
+*.log
+*.lot
+*.toc
