@@ -43,3 +43,4 @@ test_results.txt
 *.log
 *.lot
 *.toc
+*.tex
